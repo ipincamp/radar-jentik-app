@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../report_entry/presentation/pages/entry_form_page.dart';
 import '../../domain/entities/risk_point.dart';
@@ -101,9 +102,16 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
               ),
 
               // Layer 3 (Opsional): Copyright attribution
-              const RichAttributionWidget(
+              RichAttributionWidget(
                 attributions: [
-                  TextSourceAttribution('OpenStreetMap contributors'),
+                  TextSourceAttribution(
+                    'OpenStreetMap contributors',
+                    onTap: () => launchUrl(
+                      Uri.parse('https://openstreetmap.org/copyright'),
+                      // Membuka di browser luar
+                      mode: LaunchMode.externalApplication,
+                    ),
+                  ),
                 ],
               ),
             ],
