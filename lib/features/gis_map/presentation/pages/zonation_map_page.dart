@@ -101,8 +101,9 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
                 }).toList(),
               ),
 
-              // Layer 3 (Opsional): Copyright attribution
+              // Layer 3: Copyright attribution
               RichAttributionWidget(
+                alignment: AttributionAlignment.bottomLeft,
                 attributions: [
                   TextSourceAttribution(
                     'OpenStreetMap contributors',
