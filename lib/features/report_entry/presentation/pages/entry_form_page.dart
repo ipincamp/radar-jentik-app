@@ -1,0 +1,202 @@
+import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import '../../domain/entities/larvae_report.dart';
+import '../../data/repositories/report_repository_impl.dart';
+
+class EntryFormPage extends StatefulWidget {
+  const EntryFormPage({super.key});
+
+  @override
+  State<EntryFormPage> createState() => _EntryFormPageState();
+}
+
+class _EntryFormPageState extends State<EntryFormPage> {
+  final _formKey = GlobalKey<FormState>();
+  final _repository = ReportRepositoryImpl();
+
+  // State Form
+  bool _isLoadingLocation = true;
+  bool _isSubmitting = false;
+  String? _locationMessage;
+  double? _latitude;
+  double? _longitude;
+
+  // Default status: Negatif (Bebas Jentik)
+  bool _isPositive = false;
+  final _notesController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _getCurrentLocation(); // Ambil GPS otomatis saat buka halaman
+  }
+
+  // Fungsi mengambil GPS
+  Future<void> _getCurrentLocation() async {
+    setState(() => _isLoadingLocation = true);
+
+    // Cek Permission sederhana (untuk MVP)
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (permission == LocationPermission.whileInUse ||
+        permission == LocationPermission.always) {
+      try {
+        Position position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+        );
+        setState(() {
+          _latitude = position.latitude;
+          _longitude = position.longitude;
+          _locationMessage = "${position.latitude}, ${position.longitude}";
+          _isLoadingLocation = false;
+        });
+      } catch (e) {
+        setState(() {
+          _locationMessage = "Gagal mengambil GPS: $e";
+          _isLoadingLocation = false;
+        });
+      }
+    } else {
+      setState(() {
+        _locationMessage = "Izin lokasi ditolak";
+        _isLoadingLocation = false;
+      });
+    }
+  }
+
+  // Fungsi Submit
+  Future<void> _submitForm() async {
+    if (_latitude == null || _longitude == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Tunggu lokasi GPS terdeteksi!")),
+      );
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+
+    final report = LarvaeReport(
+      latitude: _latitude!,
+      longitude: _longitude!,
+      isPositive: _isPositive,
+      notes: _notesController.text,
+      timestamp: DateTime.now(),
+    );
+
+    await _repository.submitReport(report);
+
+    if (mounted) {
+      setState(() => _isSubmitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Laporan Berhasil Dikirim!")),
+      );
+      Navigator.pop(context); // Kembali ke Peta setelah sukses
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Lapor Jentik")),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: ListView(
+            children: [
+              // 1. Bagian Lokasi (Otomatis)
+              Card(
+                color: Colors.grey[100],
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      const Icon(
+                        Icons.location_on,
+                        color: Colors.teal,
+                        size: 40,
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        "Lokasi Temuan",
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      _isLoadingLocation
+                          ? const CircularProgressIndicator()
+                          : Text(
+                              _locationMessage ?? "Lokasi belum didapat",
+                              style: const TextStyle(fontSize: 16),
+                            ),
+                      if (!_isLoadingLocation && _latitude == null)
+                        TextButton(
+                          onPressed: _getCurrentLocation,
+                          child: const Text("Coba Ambil Lokasi Lagi"),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // 2. Status Jentik (Switch/Radio)
+              const Text(
+                "Status Keberadaan Jentik:",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              SwitchListTile(
+                title: Text(
+                  _isPositive
+                      ? "POSITIF (Ada Jentik)"
+                      : "NEGATIF (Bebas Jentik)",
+                  style: TextStyle(
+                    color: _isPositive ? Colors.red : Colors.green,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                subtitle: const Text("Geser jika ditemukan jentik"),
+                value: _isPositive,
+                activeColor: Colors.red,
+                onChanged: (val) {
+                  setState(() => _isPositive = val);
+                },
+              ),
+              const Divider(),
+
+              // 3. Catatan Tambahan
+              TextFormField(
+                controller: _notesController,
+                decoration: const InputDecoration(
+                  labelText: "Catatan Tambahan (Opsional)",
+                  border: OutlineInputBorder(),
+                  hintText: "Contoh: Di bak mandi luar rumah",
+                ),
+                maxLines: 3,
+              ),
+              const SizedBox(height: 32),
+
+              // 4. Tombol Simpan
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.teal,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: _isSubmitting ? null : _submitForm,
+                  child: _isSubmitting
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text("KIRIM LAPORAN"),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
