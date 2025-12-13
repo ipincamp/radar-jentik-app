@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../../report_entry/presentation/pages/entry_form_page.dart';
 import '../../domain/entities/risk_point.dart';
 import '../../data/repositories/gis_repository_impl.dart';
 
@@ -108,6 +109,18 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
             ],
           );
         },
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const EntryFormPage()),
+          );
+        },
+        label: const Text("Lapor Jentik"),
+        icon: const Icon(Icons.add_location_alt),
+        backgroundColor: Colors.teal,
+        foregroundColor: Colors.white,
       ),
     );
   }
