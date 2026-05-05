@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../domain/entities/larvae_report.dart';
@@ -86,9 +87,9 @@ class _EntryFormPageState extends State<EntryFormPage> {
         });
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Gagal membuka kamera: $e")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Gagal membuka kamera: $e")));
     }
   }
 
@@ -205,7 +206,10 @@ class _EntryFormPageState extends State<EntryFormPage> {
               const SizedBox(height: 32),
 
               // 4. BUKTI FOTO (Opsional)
-              const Text("Bukti Foto Observasi:", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const Text(
+                "Bukti Foto Observasi:",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 8),
               InkWell(
                 onTap: _takePicture,
@@ -214,23 +218,43 @@ class _EntryFormPageState extends State<EntryFormPage> {
                   width: double.infinity,
                   decoration: BoxDecoration(
                     color: Colors.grey[200],
-                    border: Border.all(color: Colors.grey.shade400, style: BorderStyle.solid),
+                    border: Border.all(
+                      color: Colors.grey.shade400,
+                      style: BorderStyle.solid,
+                    ),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: _imageFile != null
                       ? ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: Image.file(
-                            File(_imageFile!.path),
-                            fit: BoxFit.cover,
-                          ),
+                          child: kIsWeb
+                              // Jika berjalan di Web, gunakan Image.network
+                              ? Image.network(
+                                  _imageFile!.path,
+                                  fit: BoxFit.cover,
+                                )
+                              // Jika berjalan di Android/iOS, gunakan Image.file
+                              : Image.file(
+                                  File(_imageFile!.path),
+                                  fit: BoxFit.cover,
+                                ),
                         )
                       : const Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.camera_alt, size: 48, color: Colors.teal),
+                            Icon(
+                              Icons.camera_alt,
+                              size: 48,
+                              color: Colors.teal,
+                            ),
                             SizedBox(height: 8),
-                            Text("Buka Kamera", style: TextStyle(color: Colors.teal, fontWeight: FontWeight.bold)),
+                            Text(
+                              "Buka Kamera",
+                              style: TextStyle(
+                                color: Colors.teal,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ],
                         ),
                 ),
@@ -242,7 +266,10 @@ class _EntryFormPageState extends State<EntryFormPage> {
                   child: TextButton.icon(
                     onPressed: () => setState(() => _imageFile = null),
                     icon: const Icon(Icons.delete, color: Colors.red),
-                    label: const Text("Hapus Foto", style: TextStyle(color: Colors.red)),
+                    label: const Text(
+                      "Hapus Foto",
+                      style: TextStyle(color: Colors.red),
+                    ),
                   ),
                 ),
               const SizedBox(height: 32),
