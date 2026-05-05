@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:latlong2/latlong.dart';
+import 'location_picker_page.dart';
 
 import '../../domain/entities/larvae_report.dart';
 import '../../../gis_map/data/models/risk_point_model.dart';
@@ -147,10 +149,45 @@ class _EntryFormPageState extends State<EntryFormPage> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  color: const Color(0xFFD4EBD9),
-                  child: const Icon(Icons.map, color: Colors.red),
+
+                InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () async {
+                    // 1. Pindah ke halaman Map Picker, tunggu hasilnya
+                    final LatLng? pickedLocation = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => LocationPickerPage(
+                          initialLat:
+                              _latitude, // Bawa koordinat saat ini jika ada
+                          initialLng: _longitude,
+                        ),
+                      ),
+                    );
+
+                    // 2. Jika user menekan "Gunakan Lokasi Ini", update state
+                    if (pickedLocation != null) {
+                      setState(() {
+                        _latitude = pickedLocation.latitude;
+                        _longitude = pickedLocation.longitude;
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            "Titik koordinat diperbarui secara manual!",
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD4EBD9),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.map, color: Colors.red),
+                  ),
                 ),
               ],
             ),
