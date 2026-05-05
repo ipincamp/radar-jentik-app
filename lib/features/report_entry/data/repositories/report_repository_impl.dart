@@ -27,6 +27,9 @@ class ReportRepositoryImpl implements ReportRepository {
       longitude: report.longitude,
       value: report.isPositive ? 1.0 : 0.0,
       level: report.isPositive ? RiskLevel.danger : RiskLevel.safe,
+      notes: report.notes,
+      imagePath: report.imagePath,
+      timestamp: report.timestamp,
     );
 
     // Tambahkan ke memori (seolah-olah insert ke database)

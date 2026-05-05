@@ -7,11 +7,19 @@ class RiskPoint {
   final double value; // Nilai Estimasi z'
   final RiskLevel level; // Hasil klasifikasi warna
 
+  final String? notes;
+  final String? imagePath;
+  final DateTime? timestamp;
+
   const RiskPoint({
     required this.latitude,
     required this.longitude,
     required this.value,
     required this.level,
+
+    this.notes,
+    this.imagePath,
+    this.timestamp,
   });
 
   // Logic bisnis ringan
