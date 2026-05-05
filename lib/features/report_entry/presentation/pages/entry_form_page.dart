@@ -42,33 +42,55 @@ class _EntryFormPageState extends State<EntryFormPage> {
   Future<void> _getCurrentLocation() async {
     setState(() => _isLoadingLocation = true);
 
-    // Cek Permission sederhana (untuk MVP)
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-
-    if (permission == LocationPermission.whileInUse ||
-        permission == LocationPermission.always) {
-      try {
-        Position position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high,
-        );
+    try {
+      // 1. Cek apakah Layanan Lokasi di Sistem Operasi aktif
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
         setState(() {
-          _latitude = position.latitude;
-          _longitude = position.longitude;
-          _locationMessage = "${position.latitude}, ${position.longitude}";
+          _locationMessage =
+              "Layanan Lokasi OS mati (Cek setting Windows/Mac).";
           _isLoadingLocation = false;
         });
-      } catch (e) {
-        setState(() {
-          _locationMessage = "Gagal mengambil GPS: $e";
-          _isLoadingLocation = false;
-        });
+        return;
       }
-    } else {
+
+      // 2. Cek Izin Browser
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          setState(() {
+            _locationMessage = "Izin lokasi ditolak oleh browser.";
+            _isLoadingLocation = false;
+          });
+          return;
+        }
+      }
+
+      // 3. Cek jika izin ditolak secara permanen
+      if (permission == LocationPermission.deniedForever) {
+        setState(() {
+          _locationMessage = "Izin lokasi ditolak permanen oleh OS/Browser.";
+          _isLoadingLocation = false;
+        });
+        return;
+      }
+
+      // 4. Jika izin lolos, ambil koordinat
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
       setState(() {
-        _locationMessage = "Izin lokasi ditolak";
+        _latitude = position.latitude;
+        _longitude = position.longitude;
+        _locationMessage = "${position.latitude}, ${position.longitude}";
+        _isLoadingLocation = false;
+      });
+    } catch (e) {
+      setState(() {
+        // Ini akan menangkap error jika browser gagal menentukan lokasi
+        _locationMessage = "Gagal mengambil GPS: $e";
         _isLoadingLocation = false;
       });
     }
