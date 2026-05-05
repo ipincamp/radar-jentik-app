@@ -1,0 +1,33 @@
+# 📝 Changelog - Pembaruan MVP Mobile GIS - May 5, 2026
+
+## ✨ Fitur Baru (New Features)
+*   **Integrasi Kamera & Lampiran Foto**: 
+    *   Menambahkan pustaka `image_picker` untuk mengambil foto langsung dari perangkat.
+    *   Menambahkan UI kotak pratinjau (*preview*) foto di form laporan.
+    *   Menambahkan opsi untuk menghapus foto yang sudah diambil sebelum form dikirim.
+*   **Penyimpanan Data Sementara (Mock Database)**: 
+    *   Membuat `MockDatabase` (*in-memory*) untuk mensimulasikan penyimpanan data JSON/Database agar aplikasi bisa menyimpan riwayat laporan selama sesi berjalan tanpa harus langsung terhubung ke *backend* asli.
+    *   Sistem kini menyimpan atribut lengkap: Koordinat, Status Jentik, Catatan, *Path* Foto, dan Waktu Pelaporan (*Timestamp*).
+*   **Legenda Peta (Map Legend)**: 
+    *   Menambahkan UI legenda mengambang (*floating card*) di sudut kanan atas peta untuk menjelaskan arti dari warna zonasi (Merah: Bahaya, Kuning: Waspada, Hijau: Aman).
+*   **Pin Marker Interaktif & Pop-up Detail Laporan**:
+    *   Menambahkan ikon *pin* lokasi (`MarkerLayer`) di atas visualisasi radius zonasi.
+    *   *Pin* kini dapat diklik untuk memunculkan *Bottom Sheet* (jendela *pop-up* dari bawah layar) yang menampilkan detail lengkap dari laporan (Status, Waktu, Koordinat, Catatan Lapangan, dan Foto Bukti).
+
+## 🐛 Perbaikan Kutu & Peningkatan (Bug Fixes & Enhancements)
+*   **Dukungan Rendering Gambar Lintas Platform (Web & Mobile)**: 
+    *   Memperbaiki *error* `Image.file is not supported on Flutter Web` dengan mengimplementasikan pengecekan platform (`kIsWeb`). Sistem kini menggunakan `Image.network` untuk browser Chrome dan `Image.file` untuk aplikasi Android/iOS.
+*   **Penanganan Error Akses Lokasi (GPS)**: 
+    *   Memperbaiki logika `_getCurrentLocation` agar lebih tangguh dalam menangani penolakan akses lokasi.
+    *   Menambahkan deteksi apakah "Layanan Lokasi Sistem Operasi" (*OS Location Service*) sedang mati.
+    *   Menambahkan deteksi spesifik jika izin diblokir permanen (`deniedForever`) oleh browser/OS.
+*   **Sinkronisasi Real-time Peta & Form**:
+    *   Peta kini memuat ulang (*refresh*) data secara otomatis setelah pengguna selesai mengirimkan laporan baru dari halaman form, sehingga titik baru langsung muncul di peta tanpa perlu me-*restart* aplikasi.
+
+## 🛠 Perubahan File Sistem (Under the Hood)
+*   `pubspec.yaml`: Penambahan *dependency* `image_picker`.
+*   `larvae_report.dart` & `risk_point.dart`: Penambahan atribut `imagePath`, `notes`, dan `timestamp` pada entitas model.
+*   `report_repository_impl.dart`: Pembaruan logika untuk menginjeksi data laporan baru dari form ke dalam `MockDatabase`.
+*   `gis_repository_impl.dart`: Pembaruan fungsi pengambilan data (*fetch*) agar membaca langsung dari `MockDatabase` beserta seluruh data *dummy* interaktifnya. 
+*   `entry_form_page.dart`: Modifikasi form input, implementasi penanganan akses lokasi tingkat lanjut, dan pembacaan foto lintas platform.
+*   `zonation_map_page.dart`: Implementasi *Stack* UI untuk legenda, `MarkerLayer`, dan fungsi `showModalBottomSheet`.
