@@ -9,6 +9,6 @@ class GisRepositoryImpl implements GisRepository {
     await Future.delayed(const Duration(milliseconds: 500));
 
     // Mengembalikan data dari simulasi JSON/Database
-    return MockDatabase.data;
+    return MockDatabase.mapData;
   }
 }

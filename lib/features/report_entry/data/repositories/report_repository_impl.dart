@@ -33,7 +33,7 @@ class ReportRepositoryImpl implements ReportRepository {
     );
 
     // Tambahkan ke memori (seolah-olah insert ke database)
-    MockDatabase.data.add(newPoint);
+    MockDatabase.mapData.add(newPoint);
 
     // Anggap selalu sukses untuk MVP ini
     return;

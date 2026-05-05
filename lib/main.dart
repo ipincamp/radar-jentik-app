@@ -1,3 +1,4 @@
+import 'package:app/features/main_navigation_page.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -31,7 +32,7 @@ class App extends StatelessWidget {
       ),
 
       // Halaman yang pertama kali dibuka
-      home: const ZonationMapPage(),
+      home: const MainNavigationPage(),
     );
   }
 }

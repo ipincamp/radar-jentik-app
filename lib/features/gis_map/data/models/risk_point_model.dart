@@ -1,9 +1,10 @@
 import '../../domain/entities/risk_point.dart';
+import '../../../report_entry/domain/entities/larvae_report.dart';
 
 // Kelas ini mensimulasikan penyimpanan JSON / Database Server
 class MockDatabase {
   // Data dummy awal agar peta tidak kosong
-  static List<RiskPoint> data = [
+  static List<RiskPoint> mapData = [
     RiskPoint(
       latitude: -7.4025,
       longitude: 109.1670,
@@ -30,6 +31,9 @@ class MockDatabase {
       timestamp: DateTime.now().subtract(const Duration(days: 2)),
     ),
   ];
+
+  // Database Lokal (Antrean Sinkronisasi)
+  static List<LarvaeReport> localReports = [];
 }
 
 /*
