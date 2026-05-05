@@ -13,6 +13,8 @@ class ReportRepositoryImpl implements ReportRepository {
     log('--- MENGIRIM LAPORAN KE SERVER ---');
     log('Koordinat: ${report.latitude}, ${report.longitude}');
     log('Status: ${report.isPositive ? "POSITIF (Bahaya)" : "NEGATIF (Aman)"}');
+    log('Catatan: ${report.notes}');
+    log('Foto: ${report.imagePath ?? "Tidak ada foto dilampirkan"}');
     log('Waktu: ${report.timestamp}');
     log('----------------------------------');
 
