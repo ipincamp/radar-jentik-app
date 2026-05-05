@@ -5,10 +5,10 @@ import '../models/risk_point_model.dart';
 class GisRepositoryImpl implements GisRepository {
   @override
   Future<List<RiskPoint>> getZonationData() async {
-    // Simulasi delay jaringan (misal: 2 detik)
-    await Future.delayed(const Duration(seconds: 2));
+    // Simulasi loading pengambilan data (dipercepat jadi 0.5 detik)
+    await Future.delayed(const Duration(milliseconds: 500));
 
-    // Mengembalikan data dummy statis
-    return RiskPointModel.getDummyList();
+    // Mengembalikan data dari simulasi JSON/Database
+    return MockDatabase.data;
   }
 }

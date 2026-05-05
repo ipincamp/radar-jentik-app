@@ -2,6 +2,9 @@ import 'dart:developer';
 import '../../domain/entities/larvae_report.dart';
 import '../../domain/repositories/report_repository.dart';
 
+import '../../../gis_map/domain/entities/risk_point.dart';
+import '../../../gis_map/data/models/risk_point_model.dart';
+
 class ReportRepositoryImpl implements ReportRepository {
   @override
   Future<void> submitReport(LarvaeReport report) async {
@@ -17,6 +20,17 @@ class ReportRepositoryImpl implements ReportRepository {
     log('Foto: ${report.imagePath ?? "Tidak ada foto dilampirkan"}');
     log('Waktu: ${report.timestamp}');
     log('----------------------------------');
+
+    // MENSIMULASIKAN SIMPAN KE JSON/DATABASE SEBAGAI TITIK MAP BARU
+    final newPoint = RiskPoint(
+      latitude: report.latitude,
+      longitude: report.longitude,
+      value: report.isPositive ? 1.0 : 0.0,
+      level: report.isPositive ? RiskLevel.danger : RiskLevel.safe,
+    );
+
+    // Tambahkan ke memori (seolah-olah insert ke database)
+    MockDatabase.data.add(newPoint);
 
     // Anggap selalu sukses untuk MVP ini
     return;
