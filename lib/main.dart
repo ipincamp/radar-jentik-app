@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'features/gis_map/presentation/pages/zonation_map_page.dart';
+import 'features/auth/presentation/pages/login_page.dart';
 
 void main() {
   runApp(const App());
@@ -32,7 +33,7 @@ class App extends StatelessWidget {
       ),
 
       // Halaman yang pertama kali dibuka
-      home: const MainNavigationPage(),
+      home: const LoginPage(),
     );
   }
 }
