@@ -1,39 +1,31 @@
-import 'package:app/features/main_navigation_page.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-
-import 'features/gis_map/presentation/pages/zonation_map_page.dart';
+import 'features/auth/presentation/pages/splash_page.dart';
 import 'features/auth/presentation/pages/login_page.dart';
+import 'features/cadre/presentation/pages/cadre_main_nav.dart';
+import 'features/officer/presentation/pages/officer_main_nav.dart';
 
 void main() {
-  runApp(const App());
+  runApp(const RadarJentikApp());
 }
 
-class App extends StatelessWidget {
-  const App({super.key});
+class RadarJentikApp extends StatelessWidget {
+  const RadarJentikApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Mobile GIS-IDW Cilongok',
-      debugShowCheckedModeBanner: kDebugMode,
-
-      // Konfigurasi Tema
+      title: 'Radar Jentik',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.teal,
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-        appBarTheme: const AppBarTheme(
-          centerTitle: true,
-          elevation: 2,
-          foregroundColor: Colors.white,
-        ),
+        primarySwatch: Colors.blue,
+        scaffoldBackgroundColor: Colors.grey[50],
       ),
-
-      // Halaman yang pertama kali dibuka
-      home: const LoginPage(),
+      initialRoute: '/splash',
+      routes: {
+        '/splash': (context) => const SplashPage(),
+        '/login': (context) => const LoginPage(),
+        '/cadre': (context) => const CadreMainNav(),
+        '/officer': (context) => const OfficerMainNav(),
+      },
     );
   }
 }
