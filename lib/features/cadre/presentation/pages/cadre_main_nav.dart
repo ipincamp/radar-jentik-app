@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'cadre_dashboard_page.dart';
 import 'cadre_history_page.dart';
+import 'entry_form_page.dart';
 import '../../../gis_map/presentation/pages/zonation_map_page.dart';
 import '../../../profile/presentation/pages/profile_page.dart';
 
@@ -26,6 +27,25 @@ class _CadreMainNavState extends State<CadreMainNav> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: _pages[_currentIndex],
+
+      // FLOATING ACTION BUTTON
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          // Navigasi masuk ke halaman form input laporan jentik
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const EntryFormPage()),
+          );
+        },
+        backgroundColor: Colors.blue,
+        shape: const CircleBorder(), // Membuat tombol bulat penuh sempurna
+        child: const Icon(Icons.assignment_add, color: Colors.white, size: 28),
+      ),
+
+      // Mengatur lokasi tombol melayang di sudut kanan bawah, pas di atas Nav Bar
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+
+      // BOTTOM NAVIGATION BAR ASLI ANDA (TETAP UTUH 4 TAB)
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         type: BottomNavigationBarType.fixed,
