@@ -31,7 +31,6 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _handleLogin() async {
-    // Validasi form sebelum memanggil API
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {
@@ -39,7 +38,6 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      // 1. Tembak API Login
       final response = await _apiClient.dio.post(
         '/auth/login',
         data: {
@@ -49,39 +47,27 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       if (response.statusCode == 200) {
-        // 2. Ambil token dari response
+        // Ambil data langsung dari response body JSON backend yang baru
         final token = response.data['token'];
+        final role = response.data['role'] ?? 'cadre';
 
-        // 3. Simpan token ke Secure Storage
+        // Simpan keduanya secara terpisah ke dalam secure storage
         await _storage.write(key: 'jwt_token', value: token);
+        await _storage.write(key: 'user_role', value: role);
 
-        // 4. Decode JWT Token secara manual untuk mengambil 'role'
-        // Token JWT terdiri dari 3 bagian yang dipisah dengan titik (.)
-        final parts = token.split('.');
-        if (parts.length == 3) {
-          final payload = parts[1];
-          // Normalisasi base64
-          final String normalized = base64Url.normalize(payload);
-          // Decode payload JSON
-          final String resp = utf8.decode(base64Url.decode(normalized));
-          final Map<String, dynamic> payloadMap = json.decode(resp);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Login Berhasil'),
+              backgroundColor: Colors.green,
+            ),
+          );
 
-          final String role = payloadMap['role'] ?? 'cadre';
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Login Berhasil'),
-                backgroundColor: Colors.green,
-              ),
-            );
-
-            // 5. Arahkan ke halaman yang tepat berdasarkan role
-            if (role == 'officer') {
-              Navigator.pushReplacementNamed(context, '/officer');
-            } else {
-              Navigator.pushReplacementNamed(context, '/cadre');
-            }
+          // Navigasi langsung berdasarkan role tanpa parsing token
+          if (role == 'officer') {
+            Navigator.pushReplacementNamed(context, '/officer');
+          } else {
+            Navigator.pushReplacementNamed(context, '/cadre');
           }
         }
       }
@@ -96,6 +82,15 @@ class _LoginPageState extends State<LoginPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(errorMessage), backgroundColor: Colors.red),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Sistem gagal memproses data: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
