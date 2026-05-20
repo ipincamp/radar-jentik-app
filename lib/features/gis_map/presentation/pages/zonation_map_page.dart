@@ -1,13 +1,8 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:dio/dio.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:url_launcher/url_launcher.dart';
-
-import '../../../report_entry/presentation/pages/entry_form_page.dart';
-import '../../domain/entities/risk_point.dart';
-import '../../data/repositories/gis_repository_impl.dart';
+import '../../../../core/network/api_client.dart';
 
 class ZonationMapPage extends StatefulWidget {
   const ZonationMapPage({super.key});
@@ -17,141 +12,135 @@ class ZonationMapPage extends StatefulWidget {
 }
 
 class _ZonationMapPageState extends State<ZonationMapPage> {
-  final repository = GisRepositoryImpl();
-  late Future<List<RiskPoint>> _zonationDataFuture;
+  final _apiClient = ApiClient();
+  bool _isLoading = true;
+  List<Marker> _markers = [];
+
+  // Koordinat tengah default (Misal: Tengah wilayah Puskesmas / Banyumas)
+  final LatLng _defaultCenter = const LatLng(-7.4245, 109.2302);
 
   @override
   void initState() {
     super.initState();
-    _zonationDataFuture = repository.getZonationData();
+    _fetchMapData();
   }
 
-  Color _getColor(RiskLevel level) {
-    switch (level) {
-      case RiskLevel.danger:
-        return const Color(0xFFE53935).withOpacity(0.7);
-      case RiskLevel.warning:
-        return const Color(0xFFFFB300).withOpacity(0.7);
-      case RiskLevel.safe:
-        return const Color(0xFF43A047).withOpacity(0.7);
+  // Mengambil data koordinat dari backend
+  Future<void> _fetchMapData() async {
+    setState(() => _isLoading = true);
+    try {
+      final response = await _apiClient.dio.get('/reports/map');
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = response.data['data'] ?? [];
+
+        // Memetakan JSON menjadi list Marker Peta
+        final List<Marker> fetchedMarkers = data.map((report) {
+          final lat = double.tryParse(report['latitude'].toString()) ?? 0.0;
+          final lng = double.tryParse(report['longitude'].toString()) ?? 0.0;
+          final isPositive = report['larvae_status'] == 1; // 1 = Positif
+          final headName = report['family_head_name'] ?? 'Warga';
+          final rtRw = 'RT ${report['rt']}/RW ${report['rw']}';
+
+          return Marker(
+            point: LatLng(lat, lng),
+            width: 40,
+            height: 40,
+            child: GestureDetector(
+              onTap: () {
+                _showMarkerInfo(headName, rtRw, isPositive);
+              },
+              child: Icon(
+                Icons.location_on,
+                color: isPositive ? Colors.red : Colors.green,
+                size: 40,
+              ),
+            ),
+          );
+        }).toList();
+
+        setState(() {
+          _markers = fetchedMarkers;
+          _isLoading = false;
+        });
+      }
+    } on DioException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal memuat titik peta: ${e.message}')),
+        );
+      }
+      setState(() => _isLoading = false);
     }
   }
 
-  // --- FUNGSI BARU: Memunculkan Pop-up Detail Laporan ---
-  void _showMarkerDetails(RiskPoint point) {
+  // Memunculkan Jendela Info saat Marker ditekan (UX)
+  void _showMarkerInfo(String name, String rtRw, bool isPositive) {
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-            left: 20,
-            right: 20,
-            top: 20,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    point.level == RiskLevel.danger
-                        ? "🚨 POSITIF Jentik"
-                        : "✅ NEGATIF Jentik",
-                    style: TextStyle(
-                      fontSize: 18,
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  isPositive ? Icons.warning_rounded : Icons.verified_rounded,
+                  color: isPositive ? Colors.red : Colors.green,
+                  size: 32,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Rumah $name',
+                    style: const TextStyle(
+                      fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: point.level == RiskLevel.danger
-                          ? Colors.red
-                          : Colors.green,
                     ),
                   ),
-                  Text(
-                    point.timestamp != null
-                        ? "${point.timestamp!.day}/${point.timestamp!.month}/${point.timestamp!.year}"
-                        : "Waktu tidak diketahui",
-                    style: const TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
-                ],
-              ),
-              const Divider(),
-              const SizedBox(height: 8),
-
-              // Detail Koordinat
-              const Text(
-                "📍 Koordinat Lokasi:",
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              Text(
-                "${point.latitude}, ${point.longitude}",
-                style: const TextStyle(fontSize: 14),
-              ),
-              const SizedBox(height: 12),
-
-              // Detail Catatan
-              const Text(
-                "📝 Catatan Lapangan:",
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              Text(
-                (point.notes == null || point.notes!.isEmpty)
-                    ? "Tidak ada catatan."
-                    : point.notes!,
-                style: const TextStyle(fontSize: 14),
-              ),
-              const SizedBox(height: 16),
-
-              // Detail Foto
-              const Text(
-                "📸 Lampiran Foto:",
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                width: double.infinity,
-                height: 200,
-                decoration: BoxDecoration(
-                  color: Colors.grey[200],
-                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: point.imagePath != null
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: kIsWeb
-                            ? Image.network(point.imagePath!, fit: BoxFit.cover)
-                            : Image.file(
-                                File(point.imagePath!),
-                                fit: BoxFit.cover,
-                              ),
-                      )
-                    : const Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.image_not_supported,
-                            size: 40,
-                            color: Colors.grey,
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            "Tidak ada foto dilampirkan",
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                        ],
-                      ),
+              ],
+            ),
+            const Divider(height: 30),
+            Text('Alamat: $rtRw', style: const TextStyle(fontSize: 16)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Text(
+                  'Status Pemeriksaan: ',
+                  style: TextStyle(fontSize: 16),
+                ),
+                Text(
+                  isPositive ? 'POSITIF JENTIK' : 'BEBAS JENTIK',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: isPositive ? Colors.red : Colors.green,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 45,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+                onPressed: () => Navigator.pop(context),
+                child: const Text(
+                  'Tutup',
+                  style: TextStyle(color: Colors.white, fontSize: 16),
+                ),
               ),
-              const SizedBox(height: 24),
-            ],
-          ),
-        );
-      },
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -159,154 +148,31 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Peta Zonasi DBD Cilongok'),
-        backgroundColor: Colors.teal,
+        title: const Text('Peta Persebaran Jentik'),
+        actions: [
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _fetchMapData),
+        ],
       ),
-      body: FutureBuilder<List<RiskPoint>>(
-        future: _zonationDataFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final riskPoints = snapshot.data ?? [];
-
-          return Stack(
-            children: [
-              FlutterMap(
-                options: const MapOptions(
-                  initialCenter: LatLng(-7.4025, 109.1670),
-                  initialZoom: 15.0,
-                ),
-                children: [
-                  TileLayer(
-                    urlTemplate:
-                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'com.radarjentik.app',
-                  ),
-
-                  // LAYER 1: Lingkaran Radius GIS (Warna Transparan)
-                  CircleLayer(
-                    circles: riskPoints.map((point) {
-                      return CircleMarker(
-                        point: LatLng(point.latitude, point.longitude),
-                        color: _getColor(point.level),
-                        radius: 40,
-                        useRadiusInMeter: true,
-                        borderColor: Colors.white,
-                        borderStrokeWidth: 1,
-                      );
-                    }).toList(),
-                  ),
-
-                  // --- LAYER 2 BARU: PIN MARKER INTERAKTIF ---
-                  MarkerLayer(
-                    markers: riskPoints.map((point) {
-                      return Marker(
-                        point: LatLng(point.latitude, point.longitude),
-                        width: 40,
-                        height: 40,
-                        child: GestureDetector(
-                          onTap: () => _showMarkerDetails(point),
-                          child: const Icon(
-                            Icons.location_on,
-                            color: Colors.black87,
-                            size: 30,
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-
-                  RichAttributionWidget(
-                    alignment: AttributionAlignment.bottomLeft,
-                    attributions: [
-                      TextSourceAttribution(
-                        'OpenStreetMap',
-                        onTap: () => launchUrl(
-                          Uri.parse('https://openstreetmap.org/copyright'),
-                          mode: LaunchMode.externalApplication,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-
-              // UI Legenda (Tetap Sama)
-              Positioned(
-                top: 16,
-                right: 16,
-                child: Card(
-                  elevation: 4,
-                  color: Colors.white.withOpacity(0.9),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          "Legenda Risiko DBD",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        _buildLegendItem(
-                          const Color(0xFFE53935).withOpacity(0.7),
-                          "Bahaya (Ada Jentik)",
-                        ),
-                        const SizedBox(height: 6),
-                        _buildLegendItem(
-                          const Color(0xFFFFB300).withOpacity(0.7),
-                          "Waspada (Rawan)",
-                        ),
-                        const SizedBox(height: 6),
-                        _buildLegendItem(
-                          const Color(0xFF43A047).withOpacity(0.7),
-                          "Aman (Bebas Jentik)",
-                        ),
-                      ],
-                    ),
-                  ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : FlutterMap(
+              options: MapOptions(
+                initialCenter: _defaultCenter,
+                initialZoom: 14.0, // Zoom yang pas untuk cakupan desa
+                interactionOptions: const InteractionOptions(
+                  flags: InteractiveFlag.all, // Mengizinkan zoom, pan, cubit
                 ),
               ),
-            ],
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const EntryFormPage()),
-          );
-          setState(() {
-            _zonationDataFuture = repository.getZonationData();
-          });
-        },
-        label: const Text("Lapor Jentik"),
-        icon: const Icon(Icons.add_location_alt),
-        backgroundColor: Colors.teal,
-        foregroundColor: Colors.white,
-      ),
-    );
-  }
-
-  Widget _buildLegendItem(Color color, String label) {
-    return Row(
-      children: [
-        Container(
-          width: 16,
-          height: 16,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 8),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-        ),
-      ],
+              children: [
+                // Layer Gambar Peta Dasar (Satelit / Jalan)
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.ipincamp.radar_jentik',
+                ),
+                // Layer Titik Laporan
+                MarkerLayer(markers: _markers),
+              ],
+            ),
     );
   }
 }
