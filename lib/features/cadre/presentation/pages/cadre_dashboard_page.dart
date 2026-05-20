@@ -1,63 +1,55 @@
 import 'package:flutter/material.dart';
-import 'entry_form_page.dart';
 
 class CadreDashboardPage extends StatelessWidget {
-  const CadreDashboardPage({Key? key}) : super(key: key);
+  const CadreDashboardPage({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Beranda Kader'),
-        elevation: 0,
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Halo, Kader Kesehatan!',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+      appBar: AppBar(title: const Text('Beranda Kader')),
+      body: ListView(
+        padding: const EdgeInsets.all(24.0),
+        children: [
+          const Text(
+            'Halo,',
+            style: TextStyle(fontSize: 16, color: Colors.grey),
+          ),
+          const Text(
+            'Pahlawan Jentik!',
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+              color: Colors.green,
             ),
-            const Text(
-              'Desa Tugas: Langgongsari',
-              style: TextStyle(color: Colors.grey),
+          ),
+          const SizedBox(height: 30),
+
+          Card(
+            color: Colors.green[50],
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
             ),
-            const SizedBox(height: 24),
-            Card(
-              color: Colors.blue.shade50,
-              child: const ListTile(
-                title: Text('Total Laporan Bulan Ini'),
-                trailing: Text(
-                  '12',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue,
+            child: const Padding(
+              padding: EdgeInsets.all(20.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.health_and_safety, color: Colors.green, size: 30),
+                  SizedBox(height: 12),
+                  Text(
+                    'Mari Basmi Demam Berdarah',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                   ),
-                ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Gunakan menu "Lapor" di bagian bawah untuk mengirimkan data hasil pantauan jentik di rumah warga sekitar Anda.',
+                    style: TextStyle(color: Colors.black87),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          // Navigasi masuk ke form pelaporan jentik
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const EntryFormPage()),
-          );
-        },
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text(
-          'Buat Laporan',
-          style: TextStyle(color: Colors.white),
-        ),
-        backgroundColor: Colors.blue,
+          ),
+        ],
       ),
     );
   }
