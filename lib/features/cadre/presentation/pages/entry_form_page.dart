@@ -185,6 +185,15 @@ class _EntryFormPageState extends State<EntryFormPage> {
                         child: TextFormField(
                           controller: container.inspectedCtrl,
                           keyboardType: TextInputType.number,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Tidak boleh kosong';
+                            }
+                            if (int.tryParse(value) == null) {
+                              return 'Harus angka';
+                            }
+                            return null; // Valid
+                          },
                           textAlign: TextAlign.center,
                           decoration: const InputDecoration(
                             labelText: 'Diperiksa',
@@ -204,6 +213,15 @@ class _EntryFormPageState extends State<EntryFormPage> {
                         child: TextFormField(
                           controller: container.positiveCtrl,
                           keyboardType: TextInputType.number,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Tidak boleh kosong';
+                            }
+                            if (int.tryParse(value) == null) {
+                              return 'Harus angka';
+                            }
+                            return null;
+                          },
                           textAlign: TextAlign.center,
                           decoration: const InputDecoration(
                             labelText: 'Positif (+)',
