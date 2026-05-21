@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../../../core/network/api_client.dart';
 
-// Model kecil untuk menangani input dinamis wadah air
 class ContainerInput {
   String type = 'Bak Mandi';
   final TextEditingController inspectedCtrl = TextEditingController(text: '0');
@@ -19,26 +19,24 @@ class EntryFormPage extends StatefulWidget {
 class _EntryFormPageState extends State<EntryFormPage> {
   final _formKey = GlobalKey<FormState>();
   final _apiClient = ApiClient();
-  bool _isLoading = false;
 
-  // Controller Data Dasar
+  bool _isLoading = false;
+  bool _isFetchingLocation = false; // Status loading khusus untuk GPS
+
   final _rtController = TextEditingController();
   final _rwController = TextEditingController();
   final _headNameController = TextEditingController();
 
-  // Controller Lokasi (Untuk produksi, ini bisa diganti dengan package geolocator)
-  final _latController = TextEditingController(text: '-7.424512');
-  final _lngController = TextEditingController(text: '109.230231');
+  // Kosongkan nilai awal agar user harus memencet tombol deteksi
+  final _latController = TextEditingController();
+  final _lngController = TextEditingController();
 
-  // State Pilihan
-  bool _isLarvaePositive = false; // true = Positif Jentik, false = Negatif
+  bool _isLarvaePositive = false;
 
-  // Data Desa
   List<dynamic> _villages = [];
   String? _selectedVillageId;
   bool _isLoadingVillages = true;
 
-  // List Wadah Air Dinamis
   final List<ContainerInput> _containers = [ContainerInput()];
 
   @override
@@ -75,17 +73,74 @@ class _EntryFormPageState extends State<EntryFormPage> {
     }
   }
 
-  void _addContainer() {
-    setState(() {
-      _containers.add(ContainerInput());
-    });
+  // Mengambil Lokasi GPS Akurat
+  Future<void> _getCurrentLocation() async {
+    setState(() => _isFetchingLocation = true);
+
+    try {
+      bool serviceEnabled;
+      LocationPermission permission;
+
+      // 1. Cek apakah layanan lokasi (GPS) aktif di HP
+      serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        throw Exception(
+          'Layanan GPS/Lokasi tidak aktif. Harap nyalakan GPS Anda.',
+        );
+      }
+
+      // 2. Cek status izin aplikasi
+      permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        // Minta izin ke user
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          throw Exception('Izin akses lokasi ditolak oleh pengguna.');
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        throw Exception(
+          'Izin lokasi ditolak permanen. Ubah di Pengaturan HP Anda.',
+        );
+      }
+
+      // 3. Tarik kordinat saat ini dengan akurasi tinggi
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      // 4. Masukkan ke dalam Controller (Form Teks)
+      setState(() {
+        _latController.text = position.latitude.toString();
+        _lngController.text = position.longitude.toString();
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Lokasi berhasil ditemukan!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isFetchingLocation = false);
+      }
+    }
   }
 
-  void _removeContainer(int index) {
-    setState(() {
-      _containers.removeAt(index);
-    });
-  }
+  void _addContainer() => setState(() => _containers.add(ContainerInput()));
+  void _removeContainer(int index) =>
+      setState(() => _containers.removeAt(index));
 
   Future<void> _submitReport() async {
     if (!_formKey.currentState!.validate()) return;
@@ -99,7 +154,6 @@ class _EntryFormPageState extends State<EntryFormPage> {
     setState(() => _isLoading = true);
 
     try {
-      // 1. Susun array containers
       List<Map<String, dynamic>> containerList = _containers.map((c) {
         return {
           "container_type": c.type,
@@ -108,7 +162,6 @@ class _EntryFormPageState extends State<EntryFormPage> {
         };
       }).toList();
 
-      // 2. Susun payload JSON lengkap
       final payload = {
         "village_id": _selectedVillageId,
         "rt": _rtController.text.trim(),
@@ -116,11 +169,10 @@ class _EntryFormPageState extends State<EntryFormPage> {
         "family_head_name": _headNameController.text.trim(),
         "latitude": double.tryParse(_latController.text) ?? 0.0,
         "longitude": double.tryParse(_lngController.text) ?? 0.0,
-        "larvae_status": _isLarvaePositive, // Boolean
+        "larvae_status": _isLarvaePositive,
         "containers": containerList,
       };
 
-      // 3. Tembak API
       final response = await _apiClient.dio.post('/reports', data: payload);
 
       if (response.statusCode == 201) {
@@ -131,7 +183,7 @@ class _EntryFormPageState extends State<EntryFormPage> {
               backgroundColor: Colors.green,
             ),
           );
-          Navigator.pop(context); // Kembali ke dashboard/menu sebelumnya
+          Navigator.pop(context);
         }
       }
     } on DioException catch (e) {
@@ -157,7 +209,6 @@ class _EntryFormPageState extends State<EntryFormPage> {
               child: ListView(
                 padding: const EdgeInsets.all(16.0),
                 children: [
-                  // 1. DATA LOKASI
                   const Text(
                     'Data Lokasi',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -214,28 +265,70 @@ class _EntryFormPageState extends State<EntryFormPage> {
                       labelText: 'Nama Kepala Keluarga',
                       border: OutlineInputBorder(),
                     ),
-                    validator: (v) => v!.isEmpty ? 'Wajib diisi' : null,
+                    validator: (v) => v!.isEmpty ? 'Wajib' : null,
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // TOMBOL DETEKSI LOKASI
+                  SizedBox(
+                    width: double.infinity,
+                    height: 45,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue[100],
+                        foregroundColor: Colors.blue[900],
+                      ),
+                      onPressed: _isFetchingLocation
+                          ? null
+                          : _getCurrentLocation,
+                      icon: _isFetchingLocation
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.my_location),
+                      label: const Text(
+                        'Deteksi Koordinat Saat Ini',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 10),
+
+                  // INPUT LATITUDE LONGITUDE (KINI READ-ONLY)
                   Row(
                     children: [
                       Expanded(
                         child: TextFormField(
                           controller: _latController,
+                          readOnly:
+                              true, // Mencegah user mengetik manual yang rawan typo
                           decoration: const InputDecoration(
                             labelText: 'Latitude',
                             border: OutlineInputBorder(),
+                            filled: true,
+                            fillColor: Color(0xFFF3F4F6),
                           ),
+                          validator: (v) =>
+                              v!.isEmpty ? 'Gunakan tombol deteksi' : null,
                         ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: TextFormField(
                           controller: _lngController,
+                          readOnly:
+                              true, // Mencegah user mengetik manual yang rawan typo
                           decoration: const InputDecoration(
                             labelText: 'Longitude',
                             border: OutlineInputBorder(),
+                            filled: true,
+                            fillColor: Color(0xFFF3F4F6),
                           ),
+                          validator: (v) =>
+                              v!.isEmpty ? 'Gunakan tombol deteksi' : null,
                         ),
                       ),
                     ],
@@ -243,7 +336,6 @@ class _EntryFormPageState extends State<EntryFormPage> {
 
                   const Divider(height: 40, thickness: 2),
 
-                  // 2. HASIL PEMERIKSAAN UTAMA
                   const Text(
                     'Status Jentik Keseluruhan',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -259,16 +351,12 @@ class _EntryFormPageState extends State<EntryFormPage> {
                     ),
                     activeColor: Colors.red,
                     value: _isLarvaePositive,
-                    onChanged: (bool value) {
-                      setState(() {
-                        _isLarvaePositive = value;
-                      });
-                    },
+                    onChanged: (bool value) =>
+                        setState(() => _isLarvaePositive = value),
                   ),
 
                   const Divider(height: 40, thickness: 2),
 
-                  // 3. RINCIAN WADAH
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -350,7 +438,7 @@ class _EntryFormPageState extends State<EntryFormPage> {
                                   child: TextFormField(
                                     controller: _containers[index].positiveCtrl,
                                     decoration: const InputDecoration(
-                                      labelText: 'Jml Positif Jentik',
+                                      labelText: 'Jml Positif',
                                     ),
                                     keyboardType: TextInputType.number,
                                   ),
@@ -365,7 +453,6 @@ class _EntryFormPageState extends State<EntryFormPage> {
 
                   const SizedBox(height: 30),
 
-                  // TOMBOL SUBMIT
                   SizedBox(
                     height: 50,
                     child: ElevatedButton(

@@ -8,7 +8,7 @@ class ApiClient {
   // Ubah Base URL ini sesuai dengan IP komputer Anda jika di-run di device fisik
   // Jika pakai emulator Android, gunakan 10.0.2.2
   // Jika web/iOS simulator, gunakan localhost atau 127.0.0.1
-  static const String baseUrl = 'http://localhost:3000/api/v1';
+  static const String baseUrl = 'http://192.168.1.7:3000/api/v1';
 
   ApiClient() {
     dio = Dio(
