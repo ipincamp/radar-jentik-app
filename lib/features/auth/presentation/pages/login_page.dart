@@ -180,7 +180,7 @@ class _LoginPageState extends State<LoginPage> {
                         : const Text('Login', style: TextStyle(fontSize: 16)),
                   ),
                 ),
-
+                /*
                 const SizedBox(height: 16),
 
                 // Tombol Navigasi ke Register
@@ -191,6 +191,7 @@ class _LoginPageState extends State<LoginPage> {
                   },
                   child: const Text('Belum punya akun? Daftar sebagai Kader'),
                 ),
+                */
               ],
             ),
           ),
