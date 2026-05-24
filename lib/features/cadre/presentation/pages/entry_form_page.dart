@@ -4,9 +4,12 @@ import 'package:geolocator/geolocator.dart';
 import '../../../../core/network/api_client.dart';
 
 class ContainerInput {
-  String type = 'Bak Mandi';
+  final String type;
   final TextEditingController inspectedCtrl = TextEditingController(text: '0');
   final TextEditingController positiveCtrl = TextEditingController(text: '0');
+
+  // Constructor untuk inisialisasi tipe wadah
+  ContainerInput({required this.type});
 }
 
 class EntryFormPage extends StatefulWidget {
@@ -21,7 +24,7 @@ class _EntryFormPageState extends State<EntryFormPage> {
   final _apiClient = ApiClient();
 
   bool _isLoading = false;
-  bool _isFetchingLocation = false; // Status loading khusus untuk GPS
+  bool _isFetchingLocation = false;
 
   final _rtController = TextEditingController();
   final _rwController = TextEditingController();
@@ -37,7 +40,18 @@ class _EntryFormPageState extends State<EntryFormPage> {
   String? _selectedVillageId;
   bool _isLoadingVillages = true;
 
-  final List<ContainerInput> _containers = [ContainerInput()];
+  // Inisialisasi daftar dengan 9 jenis wadah
+  final List<ContainerInput> _containers = [
+    ContainerInput(type: 'Bak Kamar Mandi'),
+    ContainerInput(type: 'Tempayan'),
+    ContainerInput(type: 'Pecahan Botol/Air Kemasan'),
+    ContainerInput(type: 'Barang Bekas'),
+    ContainerInput(type: 'Kulkas/Dispenser'),
+    ContainerInput(type: 'Tandon Air'),
+    ContainerInput(type: 'Vas Bunga'),
+    ContainerInput(type: 'Pot Bunga'),
+    ContainerInput(type: 'Lain-lain'),
+  ];
 
   @override
   void initState() {
@@ -137,10 +151,6 @@ class _EntryFormPageState extends State<EntryFormPage> {
       }
     }
   }
-
-  void _addContainer() => setState(() => _containers.add(ContainerInput()));
-  void _removeContainer(int index) =>
-      setState(() => _containers.removeAt(index));
 
   Future<void> _submitReport() async {
     if (!_formKey.currentState!.validate()) return;
@@ -303,8 +313,7 @@ class _EntryFormPageState extends State<EntryFormPage> {
                       Expanded(
                         child: TextFormField(
                           controller: _latController,
-                          readOnly:
-                              true, // Mencegah user mengetik manual yang rawan typo
+                          readOnly: true,
                           decoration: const InputDecoration(
                             labelText: 'Latitude',
                             border: OutlineInputBorder(),
@@ -319,8 +328,7 @@ class _EntryFormPageState extends State<EntryFormPage> {
                       Expanded(
                         child: TextFormField(
                           controller: _lngController,
-                          readOnly:
-                              true, // Mencegah user mengetik manual yang rawan typo
+                          readOnly: true,
                           decoration: const InputDecoration(
                             labelText: 'Longitude',
                             border: OutlineInputBorder(),
@@ -357,78 +365,49 @@ class _EntryFormPageState extends State<EntryFormPage> {
 
                   const Divider(height: 40, thickness: 2),
 
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Rincian Wadah',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
+                  // Judul Rincian Wadah
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 12.0),
+                    child: Text(
+                      'Rincian Wadah',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
                       ),
-                      TextButton.icon(
-                        onPressed: _addContainer,
-                        icon: const Icon(Icons.add),
-                        label: const Text('Tambah Wadah'),
-                      ),
-                    ],
+                    ),
                   ),
 
-                  ...List.generate(_containers.length, (index) {
+                  // Tampilkan seluruh jenis container secara berurutan
+                  ..._containers.map((container) {
                     return Card(
                       margin: const EdgeInsets.only(bottom: 10),
+                      elevation: 2,
                       child: Padding(
                         padding: const EdgeInsets.all(12.0),
                         child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: DropdownButtonFormField<String>(
-                                    value: _containers[index].type,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Jenis Wadah',
-                                    ),
-                                    items:
-                                        [
-                                              'Bak Mandi',
-                                              'Tempayan',
-                                              'Ember',
-                                              'Pot Bunga',
-                                              'Lainnya',
-                                            ]
-                                            .map(
-                                              (e) => DropdownMenuItem(
-                                                value: e,
-                                                child: Text(e),
-                                              ),
-                                            )
-                                            .toList(),
-                                    onChanged: (val) => setState(
-                                      () => _containers[index].type = val!,
-                                    ),
-                                  ),
-                                ),
-                                if (_containers.length > 1)
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.delete,
-                                      color: Colors.red,
-                                    ),
-                                    onPressed: () => _removeContainer(index),
-                                  ),
-                              ],
+                            Text(
+                              container.type,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blueGrey,
+                              ),
                             ),
                             const SizedBox(height: 10),
                             Row(
                               children: [
                                 Expanded(
                                   child: TextFormField(
-                                    controller:
-                                        _containers[index].inspectedCtrl,
+                                    controller: container.inspectedCtrl,
                                     decoration: const InputDecoration(
                                       labelText: 'Jml Diperiksa',
+                                      border: OutlineInputBorder(),
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 8,
+                                      ),
                                     ),
                                     keyboardType: TextInputType.number,
                                   ),
@@ -436,9 +415,14 @@ class _EntryFormPageState extends State<EntryFormPage> {
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: TextFormField(
-                                    controller: _containers[index].positiveCtrl,
+                                    controller: container.positiveCtrl,
                                     decoration: const InputDecoration(
                                       labelText: 'Jml Positif',
+                                      border: OutlineInputBorder(),
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 8,
+                                      ),
                                     ),
                                     keyboardType: TextInputType.number,
                                   ),
@@ -449,7 +433,7 @@ class _EntryFormPageState extends State<EntryFormPage> {
                         ),
                       ),
                     );
-                  }),
+                  }).toList(),
 
                   const SizedBox(height: 30),
 
