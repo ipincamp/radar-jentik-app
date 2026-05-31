@@ -179,7 +179,7 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
       };
 
       final response = await _apiClient.dio.post(
-        '/idw/calculate',
+        '/estimations/idw',
         data: payload,
       );
 
