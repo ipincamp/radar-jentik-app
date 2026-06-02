@@ -110,7 +110,8 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
             borders.add(
               Polygon(
                 points: points,
-                color: Colors.transparent, // Transparan karena ini cuma garis batas
+                color: Colors
+                    .transparent, // Transparan karena ini cuma garis batas
                 borderColor: Colors.blueAccent, // Warna batas desa
                 borderStrokeWidth: 2.0,
               ),
@@ -217,6 +218,140 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
     }
   }
 
+  // Fungsi untuk menembak API prediksi saat peta diklik
+  Future<void> _predictPoint(double lat, double lon) async {
+    // Tampilkan loading berputar di tengah layar
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final response = await _apiClient.dio.post(
+        '/estimations/idw/predict-point',
+        data: {"lat": lat, "lon": lon},
+      );
+
+      // Tutup loading
+      if (mounted) Navigator.pop(context);
+
+      if (response.statusCode == 200) {
+        final data = response.data['data'];
+        final status = data['status'].toString();
+        final value = double.tryParse(data['value'].toString()) ?? 0.0;
+
+        _showPredictionInfo(lat, lon, status, value);
+      }
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Gagal memprediksi titik: $e')));
+      }
+    }
+  }
+
+  // Fungsi untuk memunculkan BottomSheet hasil prediksi
+  void _showPredictionInfo(
+    double lat,
+    double lon,
+    String status,
+    double value,
+  ) {
+    Color statusColor;
+    IconData statusIcon;
+
+    if (status == 'Bahaya') {
+      statusColor = Colors.red;
+      statusIcon = Icons.cancel_rounded;
+    } else if (status == 'Waspada') {
+      statusColor = Colors.orange;
+      statusIcon = Icons.warning_rounded;
+    } else {
+      statusColor = Colors.green;
+      statusIcon = Icons.check_circle_rounded;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(statusIcon, color: statusColor, size: 32),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Prediksi Zona $status',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: statusColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 30),
+            Text(
+              'Titik Klik: ${lat.toStringAsFixed(5)}, ${lon.toStringAsFixed(5)}',
+              style: const TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const Text(
+                  'Skor Kerawanan Jentik: ',
+                  style: TextStyle(fontSize: 16),
+                ),
+                Text(
+                  value.toStringAsFixed(2),
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: statusColor,
+                  ),
+                ),
+                const Text(' / 100', style: TextStyle(fontSize: 16)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '*(Algoritma IDW mengkalkulasi jarak titik ini terhadap seluruh laporan kader di sekitarnya)',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey.shade600,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 45,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+                onPressed: () => Navigator.pop(context),
+                child: const Text(
+                  'Tutup',
+                  style: TextStyle(color: Colors.white, fontSize: 16),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showMarkerInfo(String name, String rtRw, bool isPositive) {
     showModalBottomSheet(
       context: context,
@@ -312,6 +447,9 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
                 interactionOptions: const InteractionOptions(
                   flags: InteractiveFlag.all,
                 ),
+                onTap: (tapPosition, point) {
+                  _predictPoint(point.latitude, point.longitude);
+                },
               ),
               children: [
                 TileLayer(
