@@ -18,6 +18,7 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
   bool _isLoading = true;
 
   List<Marker> _markers = [];
+  Marker? _tappedMarker;
   List<Polygon> _idwPolygons = [];
   List<Polygon> _villageBorders = []; // Menyimpan garis batas 9 desa
 
@@ -432,7 +433,14 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
           ],
         ),
       ),
-    );
+    ).whenComplete(() {
+      // Akan dipanggil otomatis ketika Bottom Sheet ditutup
+      if (mounted) {
+        setState(() {
+          _tappedMarker = null; // Hapus marker prediksi
+        });
+      }
+    });
   }
 
   @override
@@ -462,6 +470,22 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
                   flags: InteractiveFlag.all,
                 ),
                 onTap: (tapPosition, point) {
+                  // 1. Munculkan marker biru di titik yang diklik
+                  setState(() {
+                    _tappedMarker = Marker(
+                      point: point,
+                      width: 50,
+                      height: 50,
+                      child: const Icon(
+                        Icons
+                            .location_searching_rounded, // Icon pencarian lokasi
+                        color: Colors.blueAccent,
+                        size: 45,
+                      ),
+                    );
+                  });
+
+                  // 2. Tembak API prediksi
                   _predictPoint(point.latitude, point.longitude);
                 },
               ),
@@ -475,7 +499,13 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
                 // 2. Layer Garis Batas 9 Desa (di atas warna IDW)
                 PolygonLayer(polygons: _villageBorders),
                 // 3. Layer Marker
-                MarkerLayer(markers: _markers),
+                MarkerLayer(
+                  markers: [
+                    ..._markers, // Tampilkan semua marker riil kader
+                    if (_tappedMarker != null)
+                      _tappedMarker!, // Tampilkan marker prediksi jika ada
+                  ],
+                ),
               ],
             ),
     );
