@@ -226,7 +226,9 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
           );
         }
 
-        _idwPolygons = tempPolygons;
+        setState(() {
+          _idwPolygons = tempPolygons;
+        });
       }
     } catch (e) {
       debugPrint('Gagal memuat peta IDW: $e');
@@ -364,7 +366,13 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
           ],
         ),
       ),
-    );
+    ).whenComplete(() {
+      if (mounted) {
+        setState(() {
+          _tappedMarker = null;
+        });
+      }
+    });
   }
 
   void _showMarkerInfo(String name, String rtRw, bool isPositive) {
