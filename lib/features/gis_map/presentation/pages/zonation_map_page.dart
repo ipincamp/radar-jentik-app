@@ -27,7 +27,7 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
   double _minLon = 180.0;
   double _maxLon = -180.0;
 
-  final double _gridResolution = 0.002;
+  final double _gridResolution = 0.0015;
 
   // Daftar 9 Desa target di Puskesmas II Cilongok
   final List<String> _targetVillages = [
@@ -41,6 +41,19 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
     'jatisaba',
     'panusupan',
   ];
+
+  // Fungsi untuk membuat gradasi warna yang mulus (Hijau -> Kuning -> Merah)
+  Color _getGradientColor(double value) {
+    if (value <= 50) {
+      // Jika nilai 0 - 50: Gradasi dari Hijau ke Kuning
+      return Color.lerp(Colors.green, Colors.yellow, value / 50) ??
+          Colors.green;
+    } else {
+      // Jika nilai 50 - 100: Gradasi dari Kuning ke Merah
+      return Color.lerp(Colors.yellow, Colors.red, (value - 50) / 50) ??
+          Colors.yellow;
+    }
+  }
 
   @override
   void initState() {
@@ -195,7 +208,8 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
           final value =
               double.tryParse(point['EstimatedValue'].toString()) ?? 0.0;
 
-          Color? gridColor = Color.lerp(Colors.green, Colors.red, value / 100);
+          // Color? gridColor = Color.lerp(Colors.green, Colors.red, value / 100);
+          Color gridColor = _getGradientColor(value);
 
           tempPolygons.add(
             Polygon(
@@ -205,7 +219,7 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
                 LatLng(lat + halfRes, lon + halfRes),
                 LatLng(lat + halfRes, lon - halfRes),
               ],
-              color: gridColor?.withOpacity(0.4) ?? Colors.transparent,
+              color: gridColor?.withOpacity(0.55),
               borderStrokeWidth: 0,
             ),
           );
