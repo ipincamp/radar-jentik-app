@@ -19,15 +19,25 @@ class _OfficerValidationDetailPageState
   bool _isLoading = false;
 
   // Fungsi untuk mengeksekusi PUT /reports/:id/validate
-  Future<void> _validateReport(String status) async {
+  Future<void> _validateReport(String status, {String? rejectionReason}) async {
     setState(() => _isLoading = true);
 
     try {
       final reportId = widget.reportData['id'];
 
+      // Siapkan payload
+      final Map<String, dynamic> payload = {'status': status};
+
+      // Jika ditolak dan ada alasannya, masukkan ke payload
+      if (status == 'reject' &&
+          rejectionReason != null &&
+          rejectionReason.isNotEmpty) {
+        payload['rejection_reason'] = rejectionReason;
+      }
+
       final response = await _apiClient.dio.put(
         '/reports/$reportId/validate',
-        data: {'status': status}, // 'accept' atau 'reject'
+        data: payload,
       );
 
       if (response.statusCode == 200) {
@@ -59,28 +69,87 @@ class _OfficerValidationDetailPageState
     }
   }
 
-  // Menampilkan pop-up dialog konfirmasi (UX Best Practice)
-  void _showConfirmationDialog(String action, String status) {
+  // Dialog khusus untuk PENOLAKAN (dengan input teks)
+  void _showRejectDialog() {
+    final TextEditingController reasonController = TextEditingController();
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Konfirmasi $action'),
-        content: Text('Apakah Anda yakin ingin men$action laporan ini?'),
+        title: const Text('Tolak Laporan', style: TextStyle(color: Colors.red)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Silakan masukkan alasan penolakan laporan ini:'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonController,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: 'Contoh: Foto kurang jelas, data RT/RW salah...',
+              ),
+            ),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context), // Tutup dialog
             child: const Text('Batal', style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: status == 'accept' ? Colors.green : Colors.red,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () {
+              final reason = reasonController.text.trim();
+              if (reason.isEmpty) {
+                // Cegah petugas submit jika alasan masih kosong
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Alasan penolakan wajib diisi!'),
+                    backgroundColor: Colors.orange,
+                  ),
+                );
+                return;
+              }
               Navigator.pop(context); // Tutup dialog
-              _validateReport(status); // Jalankan fungsi validasi
+              _validateReport(
+                'reject',
+                rejectionReason: reason,
+              ); // Eksekusi tolak
             },
             child: const Text(
-              'Ya, Yakin',
+              'Tolak Laporan',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Dialog khusus untuk PENERIMAAN (hanya konfirmasi Yes/No)
+  void _showAcceptDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Konfirmasi Terima'),
+        content: const Text(
+          'Apakah Anda yakin ingin menerima laporan ini? Data akan masuk ke dalam rekapitulasi Puskesmas.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context), // Tutup dialog
+            child: const Text('Batal', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            onPressed: () {
+              Navigator.pop(context); // Tutup dialog
+              _validateReport('accept'); // Eksekusi terima
+            },
+            child: const Text(
+              'Ya, Terima',
               style: TextStyle(color: Colors.white),
             ),
           ),
@@ -193,8 +262,8 @@ class _OfficerValidationDetailPageState
                             side: const BorderSide(color: Colors.red),
                             padding: const EdgeInsets.symmetric(vertical: 16),
                           ),
-                          onPressed: () =>
-                              _showConfirmationDialog('Tolak', 'reject'),
+                          // PANGGIL FUNGSI REJECT DI SINI
+                          onPressed: _showRejectDialog,
                           child: const Text(
                             'Tolak Laporan',
                             style: TextStyle(fontSize: 16),
@@ -208,8 +277,8 @@ class _OfficerValidationDetailPageState
                             backgroundColor: Colors.green,
                             padding: const EdgeInsets.symmetric(vertical: 16),
                           ),
-                          onPressed: () =>
-                              _showConfirmationDialog('Terima', 'accept'),
+                          // PANGGIL FUNGSI ACCEPT DI SINI
+                          onPressed: _showAcceptDialog,
                           child: const Text(
                             'Terima Laporan',
                             style: TextStyle(fontSize: 16, color: Colors.white),
