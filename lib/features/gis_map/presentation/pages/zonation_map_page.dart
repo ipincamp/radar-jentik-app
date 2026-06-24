@@ -28,7 +28,10 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
   double _minLon = 180.0;
   double _maxLon = -180.0;
 
-  final double _gridResolution = 0.0015;
+  // supaya lebih halus
+  final double _gridResolution = 0.001;
+  // 4000 kotak
+  // final double _gridResolution = 0.0008;
 
   // Daftar 9 Desa target di Puskesmas II Cilongok
   final List<String> _targetVillages = [
@@ -44,6 +47,7 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
   ];
 
   // Fungsi untuk membuat gradasi warna yang mulus (Hijau -> Kuning -> Merah)
+  /*
   Color _getGradientColor(double value) {
     if (value <= 50) {
       // Jika nilai 0 - 50: Gradasi dari Hijau ke Kuning
@@ -53,6 +57,18 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
       // Jika nilai 50 - 100: Gradasi dari Kuning ke Merah
       return Color.lerp(Colors.yellow, Colors.red, (value - 50) / 50) ??
           Colors.yellow;
+    }
+  }
+  */
+  Color _getZonationColor(double value) {
+    double score = (value <= 1.0 && value > 0.0) ? (value * 100) : value;
+
+    if (score <= 33.33) {
+      return Colors.green; // Kategori 1: Aman
+    } else if (score <= 66.66) {
+      return Colors.orange; // Kategori 2: Rawan / Waspada
+    } else {
+      return Colors.red; // Kategori 3: Bahaya
     }
   }
 
@@ -183,7 +199,6 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
   // 3. Meminta Backend menghitung IDW menggunakan Bounding Box Dinamis
   Future<void> _fetchIDWData() async {
     try {
-      // Bounding box ini didapat secara otomatis dari fungsi _loadGeoJsonAndCalculateBounds
       final payload = {
         "min_lat": _minLat,
         "max_lat": _maxLat,
@@ -203,14 +218,37 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
         final List<Polygon> tempPolygons = [];
         final halfRes = _gridResolution / 2;
 
-        for (var point in gridData) {
-          final lat = double.tryParse(point['Lat'].toString()) ?? 0.0;
-          final lon = double.tryParse(point['Lon'].toString()) ?? 0.0;
-          final value =
-              double.tryParse(point['EstimatedValue'].toString()) ?? 0.0;
+        // Beri tahu jika ternyata API mereturn array kosong
+        if (gridData.isEmpty && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Info: Data Zonasi kosong dari server'),
+            ),
+          );
+          return;
+        }
 
-          // Color? gridColor = Color.lerp(Colors.green, Colors.red, value / 100);
-          Color gridColor = _getGradientColor(value);
+        for (var point in gridData) {
+          // Fallback pembacaan KEY. Mengantisipasi huruf besar (Lat) atau kecil (lat)
+          final lat =
+              double.tryParse((point['Lat'] ?? point['lat']).toString()) ?? 0.0;
+          final lon =
+              double.tryParse((point['Lon'] ?? point['lon']).toString()) ?? 0.0;
+          final value =
+              double.tryParse(
+                (point['estimated_value'] ??
+                        point['EstimatedValue'] ??
+                        point['value'])
+                    .toString(),
+              ) ??
+              0.0;
+
+          // Jika koordinat nyasar ke 0.0, jangan di-render ke peta
+          if (lat == 0.0 && lon == 0.0) continue;
+
+          Color gridColor = _getZonationColor(
+            value,
+          ); // Fungsi zonasi (Aman/Rawan/Bahaya)
 
           tempPolygons.add(
             Polygon(
@@ -220,7 +258,9 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
                 LatLng(lat + halfRes, lon + halfRes),
                 LatLng(lat + halfRes, lon - halfRes),
               ],
-              color: gridColor?.withOpacity(0.55),
+              color: gridColor.withValues(
+                alpha: 0.5,
+              ), // Pastikan menggunakan dengan Opacity
               borderStrokeWidth: 0,
             ),
           );
@@ -232,6 +272,16 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
       }
     } catch (e) {
       debugPrint('Gagal memuat peta IDW: $e');
+      // TAMPILKAN ERROR KE LAYAR agar mudah dilacak
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal memuat peta IDW: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     }
   }
 
@@ -256,7 +306,10 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
       if (response.statusCode == 200) {
         final data = response.data['data'];
         final status = data['status'].toString();
-        final value = double.tryParse(data['value'].toString()) ?? 0.0;
+        double value = double.tryParse(data['value'].toString()) ?? 0.0;
+        if (value <= 1.0 && value > 0.0) {
+          value = value * 100; // Konversi ke skala 100
+        }
 
         _showPredictionInfo(lat, lon, status, value);
       }
