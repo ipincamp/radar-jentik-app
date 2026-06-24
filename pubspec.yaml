@@ -16,6 +16,8 @@ dependencies:
   geolocator: ^14.0.1
   image_picker: ^1.2.2
   latlong2: ^0.9.1
+  open_file: ^4.0.0
+  path_provider: ^2.1.6
   url_launcher: ^6.3.2
 
 dev_dependencies:
