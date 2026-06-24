@@ -216,7 +216,43 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
       if (response.statusCode == 200) {
         final List<dynamic> gridData = response.data['data'] ?? [];
         final List<Polygon> tempPolygons = [];
-        final halfRes = _gridResolution / 2;
+
+        double actualBoxSize = _gridResolution;
+        if (gridData.length > 1) {
+          final lat1 =
+              double.tryParse(
+                (gridData[0]['Lat'] ?? gridData[0]['lat']).toString(),
+              ) ??
+              0.0;
+          final lon1 =
+              double.tryParse(
+                (gridData[0]['Lon'] ?? gridData[0]['lon']).toString(),
+              ) ??
+              0.0;
+          final lat2 =
+              double.tryParse(
+                (gridData[1]['Lat'] ?? gridData[1]['lat']).toString(),
+              ) ??
+              0.0;
+          final lon2 =
+              double.tryParse(
+                (gridData[1]['Lon'] ?? gridData[1]['lon']).toString(),
+              ) ??
+              0.0;
+
+          // Hitung jarak asli antar titik yang dikirim server
+          final diffLat = (lat1 - lat2).abs();
+          final diffLon = (lon1 - lon2).abs();
+
+          if (diffLon > 0)
+            actualBoxSize = diffLon;
+          else if (diffLat > 0)
+            actualBoxSize = diffLat;
+        }
+
+        // Sedikit dilebihkan (dikalikan 1.05) agar kotak benar-benar menempel
+        // dan tidak ada garis putih tipis karena pembulatan desimal
+        final halfRes = (actualBoxSize / 2) * 1.05;
 
         // Beri tahu jika ternyata API mereturn array kosong
         if (gridData.isEmpty && mounted) {
