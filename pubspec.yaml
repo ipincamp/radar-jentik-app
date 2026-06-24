@@ -10,6 +10,7 @@ dependencies:
   dio: ^5.9.2
   flutter:
     sdk: flutter
+  flutter_dotenv: ^6.0.1
   flutter_map: ^8.2.2
   flutter_secure_storage: ^10.2.0
   geolocator: ^14.0.1
@@ -26,3 +27,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/33.02_kelurahan.geojson
+    - .env

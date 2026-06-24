@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'features/auth/presentation/pages/splash_page.dart';
 import 'features/auth/presentation/pages/login_page.dart';
@@ -6,7 +7,11 @@ import 'features/auth/presentation/pages/register_page.dart';
 import 'features/cadre/presentation/pages/cadre_main_nav.dart';
 import 'features/officer/presentation/pages/officer_main_nav.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await dotenv.load(fileName: ".env");
+
   runApp(const RadarJentikApp());
 }
 
