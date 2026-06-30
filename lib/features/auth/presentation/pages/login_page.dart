@@ -46,19 +46,25 @@ class _LoginPageState extends State<LoginPage> {
         },
       );
 
-      if (response.statusCode == 200) {
-        // Ambil data langsung dari response body JSON backend yang baru
-        final token = response.data['token'];
-        final role = response.data['role'] ?? 'cadre';
+      // Pastikan status sukses (200 OK atau 201 Created)
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        // Backend menggunakan format { "success": true, "message": "...", "data": {...} }
+        // Kita harus mengakses data melalui response.data['data']
+        final responseData = response.data['data'];
+
+        final token = responseData['token'];
+        final role = responseData['role'] ?? 'cadre';
 
         // Simpan keduanya secara terpisah ke dalam secure storage
         await _storage.write(key: 'jwt_token', value: token);
         await _storage.write(key: 'user_role', value: role);
 
         if (mounted) {
+          // Opsional: Tampilkan pesan sukses dari API
+          final successMessage = response.data['message'] ?? 'Login Berhasil';
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Login Berhasil'),
+            SnackBar(
+              content: Text(successMessage),
               backgroundColor: Colors.green,
             ),
           );
@@ -73,10 +79,12 @@ class _LoginPageState extends State<LoginPage> {
       }
     } on DioException catch (e) {
       String errorMessage = 'Terjadi kesalahan sistem.';
-      if (e.response?.statusCode == 401) {
+
+      if (e.response != null && e.response?.data != null) {
+        // Backend mengembalikan pesan error di dalam properti "message"
+        errorMessage = e.response?.data['message'] ?? errorMessage;
+      } else if (e.response?.statusCode == 401) {
         errorMessage = 'Username atau Password salah';
-      } else if (e.response != null && e.response?.data != null) {
-        errorMessage = e.response?.data['error'] ?? errorMessage;
       }
 
       if (mounted) {
@@ -180,18 +188,6 @@ class _LoginPageState extends State<LoginPage> {
                         : const Text('Login', style: TextStyle(fontSize: 16)),
                   ),
                 ),
-                /*
-                const SizedBox(height: 16),
-
-                // Tombol Navigasi ke Register
-                TextButton(
-                  onPressed: () {
-                    // Pastikan rute '/register' sudah didaftarkan di main.dart Anda
-                    Navigator.pushNamed(context, '/register');
-                  },
-                  child: const Text('Belum punya akun? Daftar sebagai Kader'),
-                ),
-                */
               ],
             ),
           ),

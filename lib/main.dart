@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+import 'core/network/api_client.dart';
 import 'features/auth/presentation/pages/splash_page.dart';
 import 'features/auth/presentation/pages/login_page.dart';
 import 'features/auth/presentation/pages/register_page.dart';
@@ -23,6 +24,7 @@ class RadarJentikApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Radar Jentik',
+      navigatorKey: ApiClient.navigatorKey,
       theme: ThemeData(primarySwatch: Colors.blue),
       initialRoute: '/',
 
