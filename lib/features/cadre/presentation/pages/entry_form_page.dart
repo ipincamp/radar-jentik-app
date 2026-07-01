@@ -87,56 +87,81 @@ class _EntryFormPageState extends State<EntryFormPage> {
     super.dispose();
   }
 
+  // ==========================================
+  // FETCH DATA DESA (SMART CACHE)
+  // ==========================================
   Future<void> _fetchVillages() async {
     try {
+      // 1. Coba ambil dari Server (Online)
       final response = await _apiClient.dio.get('/villages');
-      if (response.statusCode == 200) {
-        setState(() {
-          _villages = response.data['data'] ?? [];
-          _isLoadingVillages = false;
-        });
-      }
-    } catch (e) {
-      setState(() => _isLoadingVillages = false);
-    }
-  }
-
-  Future<void> _fetchContainerTypes() async {
-    try {
-      final response = await _apiClient.dio.get('/container-types');
       if (response.statusCode == 200) {
         final List<dynamic> data = response.data['data'] ?? [];
 
-        List<ContainerInput> standard = [];
-        String? otherId;
-
-        // PISAHKAN Wadah Standar dengan "Lain-lain"
-        for (var item in data) {
-          final id = item['id'].toString();
-          final name = item['name'].toString();
-
-          // Deteksi apakah ini "Lain-lain" berdasarkan namanya
-          if (name.toLowerCase().contains('lain')) {
-            otherId = id;
-          } else {
-            standard.add(ContainerInput(id: id, name: name));
-          }
-        }
+        // Simpan ke SQLite untuk digunakan saat offline nanti
+        await DatabaseHelper.instance.saveVillages(data);
 
         setState(() {
-          _standardContainers = standard;
-          _otherContainerId = otherId;
-          _isLoadingContainers = false;
+          _villages = data;
+          _isLoadingVillages = false;
         });
+        return; // Berhenti di sini jika online sukses
       }
     } catch (e) {
-      setState(() => _isLoadingContainers = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Gagal memuat daftar wadah jentik')),
-        );
+      // API Gagal dipanggil (Kemungkinan besar karena Offline/Blank spot)
+      debugPrint('Offline mode: Memuat Desa dari SQLite...');
+    }
+
+    // 2. Fallback: Ambil dari Local Database (Offline)
+    final localData = await DatabaseHelper.instance.getVillages();
+    setState(() {
+      _villages = localData;
+      _isLoadingVillages = false;
+    });
+  }
+
+  // ==========================================
+  // FETCH JENIS WADAH (SMART CACHE)
+  // ==========================================
+  Future<void> _fetchContainerTypes() async {
+    List<dynamic> data = [];
+
+    try {
+      // 1. Coba ambil dari Server (Online)
+      final response = await _apiClient.dio.get('/container-types');
+      if (response.statusCode == 200) {
+        data = response.data['data'] ?? [];
+
+        // Simpan ke SQLite
+        await DatabaseHelper.instance.saveContainerTypes(data);
+      }
+    } catch (e) {
+      // API Gagal dipanggil (Kemungkinan besar Offline)
+      debugPrint('Offline mode: Memuat Wadah dari SQLite...');
+
+      // 2. Fallback: Ambil dari Local Database (Offline)
+      data = await DatabaseHelper.instance.getContainerTypes();
+    }
+
+    // 3. Olah data (Baik dari Server maupun dari SQLite, formatnya tetap sama)
+    List<ContainerInput> standard = [];
+    String? otherId;
+
+    for (var item in data) {
+      final id = item['id'].toString();
+      final name = item['name'].toString();
+
+      if (name.toLowerCase().contains('lain')) {
+        otherId = id;
+      } else {
+        standard.add(ContainerInput(id: id, name: name));
       }
     }
+
+    setState(() {
+      _standardContainers = standard;
+      _otherContainerId = otherId;
+      _isLoadingContainers = false;
+    });
   }
 
   Future<void> _takePicture() async {
