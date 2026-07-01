@@ -10,9 +10,6 @@ class ApiClient {
   static final GlobalKey<NavigatorState> navigatorKey =
       GlobalKey<NavigatorState>();
 
-  // Ubah Base URL ini sesuai dengan IP komputer Anda jika di-run di device fisik
-  // Jika pakai emulator Android, gunakan 10.0.2.2
-  // Jika web/iOS simulator, gunakan localhost atau 127.0.0.1
   static String get baseUrl =>
       dotenv.env['BASE_URL'] ?? 'http://127.0.0.1:3000/api/v1';
 
@@ -26,49 +23,76 @@ class ApiClient {
       ),
     );
 
-    // Tambahkan Interceptor untuk menyisipkan Token secara otomatis
+    // ========================================================
+    // 1. TAMBAHKAN LOG INTERCEPTOR UNTUK DEBUGGING (BARU)
+    // ========================================================
+    dio.interceptors.add(
+      LogInterceptor(
+        request: true,
+        requestHeader: true,
+        requestBody: true, // Tampilkan data payload yang dikirim
+        responseHeader: true,
+        responseBody: true, // Tampilkan data JSON balasan dari server
+        error: true, // Tampilkan detail error
+        logPrint: (obj) => debugPrint(
+          obj.toString(),
+        ), // Menggunakan debugPrint agar teks panjang tidak terpotong di konsol
+      ),
+    );
+
+    // ========================================================
+    // 2. CUSTOM INTERCEPTOR UNTUK TOKEN & ERROR HANDLING
+    // ========================================================
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
-          // Ambil token dari secure storage
           String? token = await storage.read(key: 'jwt_token');
-
           if (token != null) {
-            // Jika token ada, tambahkan ke Header Authorization
             options.headers['Authorization'] = 'Bearer $token';
           }
           return handler.next(options);
         },
         onResponse: (response, handler) {
-          // lakukan logging atau modifikasi response terbungkus di sini jika diperlukan
           return handler.next(response);
         },
         onError: (DioException e, handler) async {
-          // 1. Logika penanganan error 401 (Unauthorized / Token Expired)
+          // --- Tambahan log ekstra khusus untuk melihat error dari backend Go ---
+          debugPrint("🔥 [API ERROR] URL: ${e.requestOptions.path}");
+          debugPrint("🔥 [API ERROR] STATUS CODE: ${e.response?.statusCode}");
+          debugPrint("🔥 [API ERROR] DATA: ${e.response?.data}");
+
+          // 1. Auto Logout jika 401
           if (e.response?.statusCode == 401) {
-            // Hapus semua key autentikasi dari secure storage
             await storage.delete(key: 'jwt_token');
             await storage.delete(key: 'user_role');
-
-            // TODO: Arahkan user kembali ke LoginPage secara otomatis tanpa BuildContext
             navigatorKey.currentState?.pushNamedAndRemoveUntil(
               '/login',
               (route) => false,
             );
           }
 
-          // 2. Intersepsi pesan error dari backend Go standar secara global
+          // 2. Ekstraksi pesan error dari format standar Go (StandardResponse)
           if (e.response?.data != null && e.response?.data is Map) {
-            final backendMessage = e.response?.data['message'];
+            final responseData = e.response?.data;
+            final backendMessage = responseData['message'];
+            final backendErrors =
+                responseData['errors']; // Tangkap detail validasi (jika ada)
+
             if (backendMessage != null) {
-              // Bungkus ulang DioException dengan pesan asli dari backend agar bisa dibaca langsung lewat e.message
+              // Jika ada detail 'errors' dari Go, gabungkan agar terlihat di SnackBar
+              String finalMessage = backendMessage.toString();
+              if (backendErrors != null) {
+                finalMessage += " \nDetail: $backendErrors";
+              }
+
               return handler.next(
                 DioException(
                   requestOptions: e.requestOptions,
                   response: e.response,
                   type: e.type,
                   error: e.error,
-                  message: backendMessage.toString(),
+                  message:
+                      finalMessage, // Timpa message bawaan Dio dengan message server
                 ),
               );
             }

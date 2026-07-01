@@ -1,15 +1,26 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:dio/dio.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../../core/network/api_client.dart';
 
+// --- KELAS BANTUAN UNTUK WADAH STANDAR ---
 class ContainerInput {
-  final String type;
+  final String id;
+  final String name;
   final TextEditingController inspectedCtrl = TextEditingController(text: '0');
   final TextEditingController positiveCtrl = TextEditingController(text: '0');
 
-  // Constructor untuk inisialisasi tipe wadah
-  ContainerInput({required this.type});
+  ContainerInput({required this.id, required this.name});
+}
+
+// --- KELAS BANTUAN UNTUK WADAH LAIN-LAIN (DINAMIS) ---
+class OtherContainerInput {
+  final TextEditingController customNameCtrl = TextEditingController();
+  final TextEditingController inspectedCtrl = TextEditingController(text: '0');
+  final TextEditingController positiveCtrl = TextEditingController(text: '0');
 }
 
 class EntryFormPage extends StatefulWidget {
@@ -30,33 +41,28 @@ class _EntryFormPageState extends State<EntryFormPage> {
   final _rwController = TextEditingController();
   final _headNameController = TextEditingController();
 
-  // Kosongkan nilai awal agar user harus memencet tombol deteksi
   final _latController = TextEditingController();
   final _lngController = TextEditingController();
-
-  bool _isLarvaePositive = false;
 
   List<dynamic> _villages = [];
   String? _selectedVillageId;
   bool _isLoadingVillages = true;
 
-  // Inisialisasi daftar dengan 9 jenis wadah
-  final List<ContainerInput> _containers = [
-    ContainerInput(type: 'Bak Kamar Mandi'),
-    ContainerInput(type: 'Tempayan'),
-    ContainerInput(type: 'Pecahan Botol/Air Kemasan'),
-    ContainerInput(type: 'Barang Bekas'),
-    ContainerInput(type: 'Kulkas/Dispenser'),
-    ContainerInput(type: 'Tandon Air'),
-    ContainerInput(type: 'Vas Bunga'),
-    ContainerInput(type: 'Pot Bunga'),
-    ContainerInput(type: 'Lain-lain'),
-  ];
+  // Variabel penampung Wadah
+  List<ContainerInput> _standardContainers = [];
+  String? _otherContainerId; // Menyimpan ID khusus untuk wadah "Lain-lain"
+  List<OtherContainerInput> _otherContainers =
+      []; // List dinamis untuk input user
+  bool _isLoadingContainers = true;
+
+  final ImagePicker _picker = ImagePicker();
+  XFile? _imageFile;
 
   @override
   void initState() {
     super.initState();
     _fetchVillages();
+    _fetchContainerTypes();
   }
 
   @override
@@ -66,9 +72,14 @@ class _EntryFormPageState extends State<EntryFormPage> {
     _headNameController.dispose();
     _latController.dispose();
     _lngController.dispose();
-    for (var c in _containers) {
+    for (var c in _standardContainers) {
       c.inspectedCtrl.dispose();
       c.positiveCtrl.dispose();
+    }
+    for (var oc in _otherContainers) {
+      oc.customNameCtrl.dispose();
+      oc.inspectedCtrl.dispose();
+      oc.positiveCtrl.dispose();
     }
     super.dispose();
   }
@@ -78,7 +89,7 @@ class _EntryFormPageState extends State<EntryFormPage> {
       final response = await _apiClient.dio.get('/villages');
       if (response.statusCode == 200) {
         setState(() {
-          _villages = response.data['data'];
+          _villages = response.data['data'] ?? [];
           _isLoadingVillages = false;
         });
       }
@@ -87,26 +98,63 @@ class _EntryFormPageState extends State<EntryFormPage> {
     }
   }
 
-  // Mengambil Lokasi GPS Akurat
+  Future<void> _fetchContainerTypes() async {
+    try {
+      final response = await _apiClient.dio.get('/container-types');
+      if (response.statusCode == 200) {
+        final List<dynamic> data = response.data['data'] ?? [];
+
+        List<ContainerInput> standard = [];
+        String? otherId;
+
+        // PISAHKAN Wadah Standar dengan "Lain-lain"
+        for (var item in data) {
+          final id = item['id'].toString();
+          final name = item['name'].toString();
+
+          // Deteksi apakah ini "Lain-lain" berdasarkan namanya
+          if (name.toLowerCase().contains('lain')) {
+            otherId = id;
+          } else {
+            standard.add(ContainerInput(id: id, name: name));
+          }
+        }
+
+        setState(() {
+          _standardContainers = standard;
+          _otherContainerId = otherId;
+          _isLoadingContainers = false;
+        });
+      }
+    } catch (e) {
+      setState(() => _isLoadingContainers = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Gagal memuat daftar wadah jentik')),
+        );
+      }
+    }
+  }
+
+  Future<void> _takePicture() async {
+    final photo = await _picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 70,
+    );
+    if (photo != null) setState(() => _imageFile = photo);
+  }
+
   Future<void> _getCurrentLocation() async {
     setState(() => _isFetchingLocation = true);
-
     try {
-      bool serviceEnabled;
-      LocationPermission permission;
-
-      // 1. Cek apakah layanan lokasi (GPS) aktif di HP
-      serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled)
         throw Exception(
           'Layanan GPS/Lokasi tidak aktif. Harap nyalakan GPS Anda.',
         );
-      }
 
-      // 2. Cek status izin aplikasi
-      permission = await Geolocator.checkPermission();
+      LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
-        // Minta izin ke user
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
           throw Exception('Izin akses lokasi ditolak oleh pengguna.');
@@ -119,12 +167,10 @@ class _EntryFormPageState extends State<EntryFormPage> {
         );
       }
 
-      // 3. Tarik kordinat saat ini dengan akurasi tinggi
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
 
-      // 4. Masukkan ke dalam Controller (Form Teks)
       setState(() {
         _latController.text = position.latitude.toString();
         _lngController.text = position.longitude.toString();
@@ -146,14 +192,35 @@ class _EntryFormPageState extends State<EntryFormPage> {
         );
       }
     } finally {
-      if (mounted) {
-        setState(() => _isFetchingLocation = false);
-      }
+      if (mounted) setState(() => _isFetchingLocation = false);
     }
   }
 
+  Future<String?> _uploadPhoto() async {
+    if (_imageFile == null) return null;
+    try {
+      String fileName = _imageFile!.path.split('/').last;
+      FormData formData = FormData.fromMap({
+        "photo": await MultipartFile.fromFile(
+          _imageFile!.path,
+          filename: fileName,
+        ),
+      });
+
+      final response = await _apiClient.dio.post('/uploads', data: formData);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return response.data['data']['photo_url'];
+      }
+      return null;
+    } catch (e) {
+      throw Exception("Gagal mengunggah foto bukti.");
+    }
+  }
+
+  // --- FUNGSI UTAMA PENGIRIMAN DATA ---
   Future<void> _submitReport() async {
     if (!_formKey.currentState!.validate()) return;
+
     if (_selectedVillageId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Harap pilih desa lokasi survei')),
@@ -161,16 +228,53 @@ class _EntryFormPageState extends State<EntryFormPage> {
       return;
     }
 
+    if (_imageFile == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Wajib mengunggah foto bukti')),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
-      List<Map<String, dynamic>> containerList = _containers.map((c) {
-        return {
-          "container_type": c.type,
-          "inspected_count": int.tryParse(c.inspectedCtrl.text) ?? 0,
-          "positive_count": int.tryParse(c.positiveCtrl.text) ?? 0,
-        };
-      }).toList();
+      String? uploadedPhotoUrl = await _uploadPhoto();
+      if (uploadedPhotoUrl == null)
+        throw Exception("Gagal mendapatkan link foto dari server.");
+
+      List<Map<String, dynamic>> containerList = [];
+
+      // 1. Kumpulkan Data Wadah Standar
+      for (var c in _standardContainers) {
+        int inspected = int.tryParse(c.inspectedCtrl.text) ?? 0;
+        int positive = int.tryParse(c.positiveCtrl.text) ?? 0;
+
+        // Opsional: Anda bisa mengirim semua wadah atau hanya yang jumlahnya > 0
+        containerList.add({
+          "container_type_id": c.id,
+          "inspected_count": inspected,
+          "positive_count": positive,
+        });
+      }
+
+      // 2. Kumpulkan Data Wadah "Lain-lain" (Custom Name)
+      if (_otherContainerId != null) {
+        for (var oc in _otherContainers) {
+          int inspected = int.tryParse(oc.inspectedCtrl.text) ?? 0;
+          int positive = int.tryParse(oc.positiveCtrl.text) ?? 0;
+          String customName = oc.customNameCtrl.text.trim();
+
+          // Kirim hanya jika user mengisi nama wadahnya
+          if (customName.isNotEmpty) {
+            containerList.add({
+              "container_type_id": _otherContainerId,
+              "custom_name": customName, // Ini format custom name-nya
+              "inspected_count": inspected,
+              "positive_count": positive,
+            });
+          }
+        }
+      }
 
       final payload = {
         "village_id": _selectedVillageId,
@@ -179,8 +283,9 @@ class _EntryFormPageState extends State<EntryFormPage> {
         "family_head_name": _headNameController.text.trim(),
         "latitude": double.tryParse(_latController.text) ?? 0.0,
         "longitude": double.tryParse(_lngController.text) ?? 0.0,
-        "larvae_status": _isLarvaePositive,
-        "containers": containerList,
+        "photo_url": uploadedPhotoUrl,
+        "inspected_at": DateTime.now().toIso8601String(),
+        "containers": containerList, // Hasil penggabungan masuk ke sini
       };
 
       final response = await _apiClient.dio.post('/reports', data: payload);
@@ -197,10 +302,16 @@ class _EntryFormPageState extends State<EntryFormPage> {
         }
       }
     } on DioException catch (e) {
-      String errMsg = e.response?.data['error'] ?? 'Gagal mengirim laporan';
+      String errMsg = e.message ?? 'Gagal mengirim laporan';
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(errMsg), backgroundColor: Colors.red),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -210,255 +321,378 @@ class _EntryFormPageState extends State<EntryFormPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoadingVillages || _isLoadingContainers) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Form Laporan Baru')),
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text("Memuat data formulir..."),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text('Form Laporan Baru')),
-      body: _isLoadingVillages
-          ? const Center(child: CircularProgressIndicator())
-          : Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(16.0),
-                children: [
-                  const Text(
-                    'Data Lokasi',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 10),
-                  DropdownButtonFormField<String>(
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(16.0),
+          children: [
+            const Text(
+              'Data Lokasi',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              decoration: const InputDecoration(
+                labelText: 'Desa',
+                border: OutlineInputBorder(),
+              ),
+              value: _selectedVillageId,
+              items: _villages.map<DropdownMenuItem<String>>((v) {
+                return DropdownMenuItem<String>(
+                  value: v['id'].toString(),
+                  child: Text(v['name'].toString()),
+                );
+              }).toList(),
+              onChanged: (val) => setState(() => _selectedVillageId = val),
+              validator: (val) => val == null ? 'Pilih desa' : null,
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _rtController,
                     decoration: const InputDecoration(
-                      labelText: 'Desa',
+                      labelText: 'RT',
                       border: OutlineInputBorder(),
                     ),
-                    value: _selectedVillageId,
-                    items: _villages.map<DropdownMenuItem<String>>((v) {
-                      return DropdownMenuItem<String>(
-                        value: v['id'].toString(),
-                        child: Text(v['name'].toString()),
-                      );
-                    }).toList(),
-                    onChanged: (val) =>
-                        setState(() => _selectedVillageId = val),
-                    validator: (val) => val == null ? 'Pilih desa' : null,
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _rtController,
-                          decoration: const InputDecoration(
-                            labelText: 'RT',
-                            border: OutlineInputBorder(),
-                          ),
-                          keyboardType: TextInputType.number,
-                          validator: (v) => v!.isEmpty ? 'Wajib' : null,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _rwController,
-                          decoration: const InputDecoration(
-                            labelText: 'RW',
-                            border: OutlineInputBorder(),
-                          ),
-                          keyboardType: TextInputType.number,
-                          validator: (v) => v!.isEmpty ? 'Wajib' : null,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  TextFormField(
-                    controller: _headNameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Nama Kepala Keluarga',
-                      border: OutlineInputBorder(),
-                    ),
+                    keyboardType: TextInputType.number,
                     validator: (v) => v!.isEmpty ? 'Wajib' : null,
                   ),
-
-                  const SizedBox(height: 20),
-
-                  // TOMBOL DETEKSI LOKASI
-                  SizedBox(
-                    width: double.infinity,
-                    height: 45,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue[100],
-                        foregroundColor: Colors.blue[900],
-                      ),
-                      onPressed: _isFetchingLocation
-                          ? null
-                          : _getCurrentLocation,
-                      icon: _isFetchingLocation
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.my_location),
-                      label: const Text(
-                        'Deteksi Koordinat Saat Ini',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextFormField(
+                    controller: _rwController,
+                    decoration: const InputDecoration(
+                      labelText: 'RW',
+                      border: OutlineInputBorder(),
                     ),
+                    keyboardType: TextInputType.number,
+                    validator: (v) => v!.isEmpty ? 'Wajib' : null,
                   ),
-                  const SizedBox(height: 10),
-
-                  // INPUT LATITUDE LONGITUDE (KINI READ-ONLY)
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _latController,
-                          readOnly: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Latitude',
-                            border: OutlineInputBorder(),
-                            filled: true,
-                            fillColor: Color(0xFFF3F4F6),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            TextFormField(
+              controller: _headNameController,
+              decoration: const InputDecoration(
+                labelText: 'Nama Kepala Keluarga',
+                border: OutlineInputBorder(),
+              ),
+              validator: (v) => v!.isEmpty ? 'Wajib' : null,
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 45,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue[100],
+                  foregroundColor: Colors.blue[900],
+                ),
+                onPressed: _isFetchingLocation ? null : _getCurrentLocation,
+                icon: _isFetchingLocation
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.my_location),
+                label: const Text(
+                  'Deteksi Koordinat Saat Ini',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _latController,
+                    readOnly: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Latitude',
+                      border: OutlineInputBorder(),
+                      filled: true,
+                      fillColor: Color(0xFFF3F4F6),
+                    ),
+                    validator: (v) =>
+                        v!.isEmpty ? 'Gunakan tombol deteksi' : null,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: TextFormField(
+                    controller: _lngController,
+                    readOnly: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Longitude',
+                      border: OutlineInputBorder(),
+                      filled: true,
+                      fillColor: Color(0xFFF3F4F6),
+                    ),
+                    validator: (v) =>
+                        v!.isEmpty ? 'Gunakan tombol deteksi' : null,
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 40, thickness: 2),
+            const Text(
+              "Foto Bukti Inspeksi",
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+            const SizedBox(height: 10),
+            InkWell(
+              onTap: _takePicture,
+              child: Container(
+                height: 180,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  border: Border.all(color: Colors.blue, width: 2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: _imageFile != null
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: kIsWeb
+                            ? Image.network(_imageFile!.path, fit: BoxFit.cover)
+                            : Image.file(
+                                File(_imageFile!.path),
+                                fit: BoxFit.cover,
+                              ),
+                      )
+                    : const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.add_a_photo, color: Colors.blue, size: 50),
+                          SizedBox(height: 8),
+                          Text(
+                            "Ketuk untuk mengambil foto",
+                            style: TextStyle(
+                              color: Colors.blue,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                          validator: (v) =>
-                              v!.isEmpty ? 'Gunakan tombol deteksi' : null,
+                          SizedBox(height: 4),
+                          Text(
+                            "Wajib melampirkan 1 foto",
+                            style: TextStyle(color: Colors.grey, fontSize: 12),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+
+            const Divider(height: 40, thickness: 2),
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12.0),
+              child: Text(
+                'Rincian Wadah',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+
+            // --- LIST WADAH STANDAR ---
+            ..._standardContainers.map((container) {
+              return Card(
+                margin: const EdgeInsets.only(bottom: 10),
+                elevation: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        container.name,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blueGrey,
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextFormField(
-                          controller: _lngController,
-                          readOnly: true,
-                          decoration: const InputDecoration(
-                            labelText: 'Longitude',
-                            border: OutlineInputBorder(),
-                            filled: true,
-                            fillColor: Color(0xFFF3F4F6),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: container.inspectedCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Jml Diperiksa',
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                              ),
+                              keyboardType: TextInputType.number,
+                            ),
                           ),
-                          validator: (v) =>
-                              v!.isEmpty ? 'Gunakan tombol deteksi' : null,
-                        ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextFormField(
+                              controller: container.positiveCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Jml Positif',
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                              ),
+                              keyboardType: TextInputType.number,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
+                ),
+              );
+            }).toList(),
 
-                  const Divider(height: 40, thickness: 2),
+            // --- LIST WADAH LAIN-LAIN (DINAMIS) ---
+            if (_otherContainerId != null) ...[
+              const SizedBox(height: 20),
+              const Text(
+                'Wadah Lain-lain (Opsional)',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 10),
 
-                  const Text(
-                    'Status Jentik Keseluruhan',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  SwitchListTile(
-                    title: Text(
-                      _isLarvaePositive
-                          ? 'Positif (Ditemukan Jentik)'
-                          : 'Negatif (Bebas Jentik)',
-                    ),
-                    subtitle: const Text(
-                      'Geser jika ditemukan jentik di rumah ini',
-                    ),
-                    activeColor: Colors.red,
-                    value: _isLarvaePositive,
-                    onChanged: (bool value) =>
-                        setState(() => _isLarvaePositive = value),
-                  ),
+              ..._otherContainers.asMap().entries.map((entry) {
+                int index = entry.key;
+                OtherContainerInput oc = entry.value;
 
-                  const Divider(height: 40, thickness: 2),
-
-                  // Judul Rincian Wadah
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 12.0),
-                    child: Text(
-                      'Rincian Wadah',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-
-                  // Tampilkan seluruh jenis container secara berurutan
-                  ..._containers.map((container) {
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      elevation: 2,
-                      child: Padding(
-                        padding: const EdgeInsets.all(12.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  color: Colors.orange[50],
+                  elevation: 1,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           children: [
-                            Text(
-                              container.type,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blueGrey,
+                            Expanded(
+                              child: TextFormField(
+                                controller: oc.customNameCtrl,
+                                decoration: const InputDecoration(
+                                  labelText: 'Nama Wadah (Misal: Galon Bekas)',
+                                  border: OutlineInputBorder(),
+                                  contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 8,
+                                  ),
+                                ),
                               ),
                             ),
-                            const SizedBox(height: 10),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: TextFormField(
-                                    controller: container.inspectedCtrl,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Jml Diperiksa',
-                                      border: OutlineInputBorder(),
-                                      contentPadding: EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 8,
-                                      ),
-                                    ),
-                                    keyboardType: TextInputType.number,
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: TextFormField(
-                                    controller: container.positiveCtrl,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Jml Positif',
-                                      border: OutlineInputBorder(),
-                                      contentPadding: EdgeInsets.symmetric(
-                                        horizontal: 10,
-                                        vertical: 8,
-                                      ),
-                                    ),
-                                    keyboardType: TextInputType.number,
-                                  ),
-                                ),
-                              ],
+                            IconButton(
+                              icon: const Icon(Icons.delete, color: Colors.red),
+                              onPressed: () {
+                                setState(() {
+                                  _otherContainers.removeAt(index);
+                                });
+                              },
                             ),
                           ],
                         ),
-                      ),
-                    );
-                  }).toList(),
-
-                  const SizedBox(height: 30),
-
-                  SizedBox(
-                    height: 50,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                      ),
-                      onPressed: _isLoading ? null : _submitReport,
-                      child: _isLoading
-                          ? const CircularProgressIndicator(color: Colors.white)
-                          : const Text(
-                              'Kirim Laporan',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.white,
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: oc.inspectedCtrl,
+                                decoration: const InputDecoration(
+                                  labelText: 'Jml Diperiksa',
+                                  border: OutlineInputBorder(),
+                                  contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 8,
+                                  ),
+                                ),
+                                keyboardType: TextInputType.number,
                               ),
                             ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: TextFormField(
+                                controller: oc.positiveCtrl,
+                                decoration: const InputDecoration(
+                                  labelText: 'Jml Positif',
+                                  border: OutlineInputBorder(),
+                                  contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 8,
+                                  ),
+                                ),
+                                keyboardType: TextInputType.number,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 20),
-                ],
+                );
+              }).toList(),
+
+              OutlinedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _otherContainers.add(OtherContainerInput());
+                  });
+                },
+                icon: const Icon(Icons.add),
+                label: const Text("Tambah Wadah Lainnya"),
+              ),
+            ],
+
+            const SizedBox(height: 30),
+            SizedBox(
+              height: 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+                onPressed: _isLoading ? null : _submitReport,
+                child: _isLoading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text(
+                        'Kirim Laporan',
+                        style: TextStyle(fontSize: 16, color: Colors.white),
+                      ),
               ),
             ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
     );
   }
 }
