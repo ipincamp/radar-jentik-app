@@ -40,18 +40,23 @@ class _SyncDashboardPageState extends State<SyncDashboardPage> {
   }
 
   Future<void> _startSync() async {
-    // 1. Cek Internet
-    var connectivityResult = await (Connectivity().checkConnectivity());
-    if (connectivityResult == ConnectivityResult.none) {
+    // ========================================================
+    // 1. PERBAIKAN CEK KONEKSI INTERNET (Tipe List)
+    // ========================================================
+    final List<ConnectivityResult> connectivityResult = await (Connectivity()
+        .checkConnectivity());
+    bool isOffline = connectivityResult.contains(ConnectivityResult.none);
+
+    if (isOffline) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Tidak ada koneksi internet. Cari sinyal terlebih dahulu!',
+            'Tidak ada koneksi internet. Cari sinyal (WiFi/Seluler) terlebih dahulu!',
           ),
           backgroundColor: Colors.red,
         ),
       );
-      return;
+      return; // Hentikan fungsi jika memang tidak ada internet
     }
 
     setState(() {

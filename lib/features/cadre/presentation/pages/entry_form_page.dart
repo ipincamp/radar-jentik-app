@@ -301,9 +301,14 @@ class _EntryFormPageState extends State<EntryFormPage> {
         "containers": containerList,
       };
 
-      // 3. CEK KONEKSI INTERNET
-      var connectivityResult = await (Connectivity().checkConnectivity());
-      bool hasInternet = connectivityResult != ConnectivityResult.none;
+      // ========================================================
+      // 3. PERBAIKAN CEK KONEKSI INTERNET (Tipe List)
+      // ========================================================
+      final List<ConnectivityResult> connectivityResult = await (Connectivity()
+          .checkConnectivity());
+      // Aplikasi dianggap offline HANYA jika list mengandung 'none'
+      bool isOffline = connectivityResult.contains(ConnectivityResult.none);
+      bool hasInternet = !isOffline;
 
       if (hasInternet) {
         // --- JIKA ONLINE: LANGSUNG UPLOAD & KIRIM KE BACKEND ---
@@ -311,7 +316,7 @@ class _EntryFormPageState extends State<EntryFormPage> {
         if (uploadedPhotoUrl == null)
           throw Exception("Gagal mendapatkan link foto dari server.");
 
-        payload["photo_url"] = uploadedPhotoUrl; // Masukkan URL foto
+        payload["photo_url"] = uploadedPhotoUrl;
 
         final response = await _apiClient.dio.post('/reports', data: payload);
         if (response.statusCode == 201) {
@@ -327,11 +332,11 @@ class _EntryFormPageState extends State<EntryFormPage> {
         }
       } else {
         // --- JIKA OFFLINE: SIMPAN KE SQFLITE LOKAL (STORE) ---
-        String payloadJson = jsonEncode(payload); // Ubah Map ke String JSON
+        String payloadJson = jsonEncode(payload);
 
         await DatabaseHelper.instance.insertPendingReport(
-          localImagePath: _imageFile!.path, // Simpan lokasi fisik foto di HP
-          payloadJson: payloadJson, // Simpan data teks JSON
+          localImagePath: _imageFile!.path,
+          payloadJson: payloadJson,
         );
 
         if (mounted) {
