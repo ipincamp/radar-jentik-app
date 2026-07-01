@@ -6,6 +6,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../../../../core/network/api_client.dart';
 import '../../../../core/local_db/db_helper.dart';
+import '../../../cadre/presentation/pages/cadre_report_detail_page.dart';
 
 class SyncDashboardPage extends StatefulWidget {
   const SyncDashboardPage({super.key});
@@ -235,9 +236,26 @@ class _SyncDashboardPageState extends State<SyncDashboardPage> {
                                 ),
                                 subtitle: Text(rtRw),
                                 trailing: const Icon(
-                                  Icons.sync_problem,
+                                  Icons.arrow_forward_ios_rounded,
                                   color: Colors.grey,
-                                ),
+                                  size: 16,
+                                ), // Ganti Ikon jadi Panah
+                                // --- TAMBAHKAN ON TAP DI SINI ---
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => CadreReportDetailPage(
+                                        reportData:
+                                            payload, // Kirim Payload JSON
+                                        isOffline:
+                                            true, // Beritahu bahwa ini offline (belum sinkron)
+                                        localImagePath:
+                                            report['local_image_path'], // Kirim jalur fisik gambar di memori HP
+                                      ),
+                                    ),
+                                  );
+                                },
                               ),
                             );
                           },

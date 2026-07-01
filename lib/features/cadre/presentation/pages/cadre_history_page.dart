@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../../../../core/network/api_client.dart';
+import 'cadre_report_detail_page.dart';
 
 class CadreHistoryPage extends StatefulWidget {
   const CadreHistoryPage({super.key});
@@ -193,7 +194,7 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
 
                   final isPositive = report['larvae_status'] == 1;
                   final valStatus = report['validation_status'] ?? 'pending';
-                  final rejectionReason = report['rejection_reason'];
+                  // final rejectionReason = report['rejection_reason'];
 
                   // Parsing Format Tanggal API (ISO 8601)
                   String dateStr = '-';
@@ -213,122 +214,99 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Ikon Indikator Jentik
-                              Container(
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: isPositive
-                                      ? Colors.red[50]
-                                      : Colors.green[50],
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  isPositive
-                                      ? Icons.bug_report
-                                      : Icons.health_and_safety,
-                                  color: isPositive ? Colors.red : Colors.green,
-                                  size: 24,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              // Data Utama
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      "$headName",
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      rtRw,
-                                      style: TextStyle(
-                                        color: Colors.grey[700],
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      dateStr,
-                                      style: const TextStyle(
-                                        color: Colors.grey,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              // Label Status
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: _getStatusColor(valStatus),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  _getStatusLabel(valStatus),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ],
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => CadreReportDetailPage(
+                              reportData: report,
+                              isOffline: false, // Karena ini dari API Riwayat
+                            ),
                           ),
-
-                          // Tampilkan Alasan Penolakan Jika Ditolak
-                          if (valStatus == 'reject' &&
-                              rejectionReason != null &&
-                              rejectionReason.toString().isNotEmpty) ...[
-                            const SizedBox(height: 12),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: Colors.red[50],
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: Colors.red.shade200),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    "Alasan Penolakan:",
-                                    style: TextStyle(
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: isPositive
+                                        ? Colors.red[50]
+                                        : Colors.green[50],
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(
+                                    isPositive
+                                        ? Icons.bug_report
+                                        : Icons.health_and_safety,
+                                    color: isPositive
+                                        ? Colors.red
+                                        : Colors.green,
+                                    size: 24,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        headName,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        rtRw,
+                                        style: TextStyle(
+                                          color: Colors.grey[700],
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        dateStr,
+                                        style: const TextStyle(
+                                          color: Colors.grey,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: _getStatusColor(valStatus),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    _getStatusLabel(valStatus),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
                                       fontWeight: FontWeight.bold,
-                                      color: Colors.red,
-                                      fontSize: 12,
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    rejectionReason.toString(),
-                                    style: TextStyle(
-                                      color: Colors.red[800],
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                           ],
-                        ],
+                        ),
                       ),
                     ),
                   );
