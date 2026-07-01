@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'officer_dashboard_page.dart';
+// IMPORT HOME PAGE YANG BARU
+import '../../../home/presentation/pages/home_page.dart';
 import 'officer_validation_page.dart';
 import 'officer_user_management_page.dart';
 import '../../../gis_map/presentation/pages/zonation_map_page.dart';
@@ -15,18 +16,22 @@ class OfficerMainNav extends StatefulWidget {
 class _OfficerMainNavState extends State<OfficerMainNav> {
   int _currentIndex = 0;
 
-  final List<Widget> _pages = [
-    const OfficerDashboardPage(),
-    const OfficerValidationPage(),
-    const ZonationMapPage(), // Peta Global Puskesmas
-    const OfficerUserManagementPage(),
-    const ProfilePage(),
-  ];
-
   @override
   Widget build(BuildContext context) {
+    // List _pages dipindah ke dalam build agar bisa membaca setState
+    final List<Widget> pages = [
+      // MENGGUNAKAN HOME PAGE DI TAB PERTAMA
+      HomePage(
+        onNavigateToTab: (index) => setState(() => _currentIndex = index),
+      ),
+      const OfficerValidationPage(),
+      const ZonationMapPage(),
+      const OfficerUserManagementPage(),
+      const ProfilePage(),
+    ];
+
     return Scaffold(
-      body: _pages[_currentIndex],
+      body: pages[_currentIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         type: BottomNavigationBarType.fixed,

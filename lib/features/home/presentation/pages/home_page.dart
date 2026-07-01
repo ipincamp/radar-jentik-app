@@ -6,8 +6,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 
 import '../../../../core/network/api_client.dart';
-import '../../../gis_map/data/models/risk_point_model.dart';
-import '../../../gis_map/domain/entities/risk_point.dart';
 import 'package:app/features/report_entry/presentation/pages/entry_form_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -27,30 +25,41 @@ class _HomePageState extends State<HomePage> {
   String _role = 'cadre';
   String _fullName = 'Memuat...';
 
-  // Variabel State
+  // Variabel State Loading
   bool _isDownloading = false;
-  int totalDanger = 0;
-  int totalSafe = 0;
-  int unsyncedCount = 0;
+  bool _isLoadingStats = true;
+
+  // Variabel Statistik Nyata (Real API)
+  int _totalDanger = 0;
+  int _totalSafe = 0;
+  int _myTotalReports = 0;
+  int _pendingValidations = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadUserData();
-    _calculateStats();
+    _initializeDashboard();
+  }
+
+  // ==========================================
+  // Inisialisasi Berurutan
+  // ==========================================
+  Future<void> _initializeDashboard() async {
+    setState(() => _isLoadingStats = true);
+    await _loadUserData();
+    await _fetchStats();
+    setState(() => _isLoadingStats = false);
   }
 
   // ==========================================
   // 1. Memuat Data User & Role
   // ==========================================
   Future<void> _loadUserData() async {
-    // Ambil Role dari Storage
     String? storedRole = await _storage.read(key: 'user_role');
     if (storedRole != null) {
       setState(() => _role = storedRole);
     }
 
-    // Ambil Nama dari API Backend
     try {
       final response = await _apiClient.dio.get('/users/me');
       if (response.statusCode == 200) {
@@ -64,7 +73,69 @@ class _HomePageState extends State<HomePage> {
   }
 
   // ==========================================
-  // 2. Fungsi Unduh Excel (Khusus Officer)
+  // 2. Fungsi Hitung Statistik (API Asli)
+  // ==========================================
+  Future<void> _fetchStats() async {
+    try {
+      // A. Statistik Wilayah (Berdasarkan Data Peta Zonasi / Validasi 'accept')
+      final mapResponse = await _apiClient.dio.get('/reports/map');
+      if (mapResponse.statusCode == 200) {
+        final List<dynamic> mapData = mapResponse.data['data'] ?? [];
+        int danger = 0;
+        int safe = 0;
+
+        for (var report in mapData) {
+          if (report['larvae_status'] == 1) {
+            danger++;
+          } else {
+            safe++;
+          }
+        }
+        if (mounted) {
+          setState(() {
+            _totalDanger = danger;
+            _totalSafe = safe;
+          });
+        }
+      }
+
+      // B. Statistik Kinerja berdasarkan Role
+      if (_role == 'cadre') {
+        // Panggil endpoint History cukup 1 baris saja, kita hanya butuh Meta Data Total
+        final historyResponse = await _apiClient.dio.get(
+          '/reports/history',
+          queryParameters: {'page': 1, 'limit': 1},
+        );
+        if (historyResponse.statusCode == 200) {
+          if (mounted) {
+            setState(() {
+              _myTotalReports =
+                  historyResponse.data['meta']?['total_items'] ?? 0;
+            });
+          }
+        }
+      } else if (_role == 'officer') {
+        // Panggil endpoint Pending untuk melihat sisa antrean validasi
+        final pendingResponse = await _apiClient.dio.get(
+          '/reports/pending',
+          queryParameters: {'page': 1, 'limit': 1},
+        );
+        if (pendingResponse.statusCode == 200) {
+          if (mounted) {
+            setState(() {
+              _pendingValidations =
+                  pendingResponse.data['meta']?['total_items'] ?? 0;
+            });
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Gagal memuat statistik: $e");
+    }
+  }
+
+  // ==========================================
+  // 3. Fungsi Unduh Excel (Khusus Officer)
   // ==========================================
   Future<void> _downloadRekapExcel() async {
     setState(() => _isDownloading = true);
@@ -112,28 +183,10 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // ==========================================
-  // 3. Kalkulasi Statistik Peta (Mock Database / Real Nanti)
-  // ==========================================
-  void _calculateStats() {
-    setState(() {
-      totalDanger = MockDatabase.mapData
-          .where((p) => p.level == RiskLevel.danger)
-          .length;
-      totalSafe = MockDatabase.mapData
-          .where((p) => p.level == RiskLevel.safe)
-          .length;
-      unsyncedCount = MockDatabase.localReports
-          .where((r) => !r.isSynced)
-          .length;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[100],
-      // MENGGUNAKAN APPBAR AGAR TOMBOL DOWNLOAD EXCEL RAPI DI POJOK KANAN
       appBar: AppBar(
         backgroundColor: const Color(0xFF143B59),
         elevation: 0,
@@ -150,13 +203,12 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             Text(
-              "Halo, $_fullName", // Dinamis dari API
+              "Halo, $_fullName",
               style: TextStyle(color: Colors.tealAccent[100], fontSize: 14),
             ),
           ],
         ),
         actions: [
-          // LOGIKA FILTER: HANYA TAMPIL JIKA ROLE == OFFICER
           if (_role == 'officer')
             Padding(
               padding: const EdgeInsets.only(right: 8.0),
@@ -182,10 +234,7 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: () async {
-          await _loadUserData();
-          _calculateStats();
-        },
+        onRefresh: _initializeDashboard,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
@@ -206,14 +255,14 @@ class _HomePageState extends State<HomePage> {
 
               const SizedBox(height: 24),
 
-              // --- SEKSI RINGKASAN STATISTIK ---
+              // --- SEKSI RINGKASAN STATISTIK WILAYAH ---
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      "Ringkasan Wilayah",
+                      "Ringkasan Wilayah (Valid)",
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -221,96 +270,49 @@ class _HomePageState extends State<HomePage> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildStatCard(
-                            title: "Positif Jentik",
-                            value: "$totalDanger",
-                            color: const Color(0xFFE53935),
-                            icon: Icons.warning_amber_rounded,
+                    if (_isLoadingStats)
+                      const Center(child: CircularProgressIndicator())
+                    else ...[
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildStatCard(
+                              title: "Positif Jentik",
+                              value: "$_totalDanger",
+                              color: const Color(0xFFE53935),
+                              icon: Icons.warning_amber_rounded,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildStatCard(
-                            title: "Bebas Jentik",
-                            value: "$totalSafe",
-                            color: const Color(0xFF43A047),
-                            icon: Icons.gpp_good_rounded,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildStatCard(
+                              title: "Bebas Jentik",
+                              value: "$_totalSafe",
+                              color: const Color(0xFF43A047),
+                              icon: Icons.gpp_good_rounded,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // --- SEKSI MENU AKSES CEPAT ---
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      "Menu Pintar",
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF143B59),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    GridView.count(
-                      crossAxisCount: 3,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      children: [
-                        _buildMenuButton(
-                          icon: Icons.add_location_alt_rounded,
-                          label: "Lapor Jentik",
-                          color: Colors.teal,
-                          onTap: () async {
-                            await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const EntryFormPage(),
-                              ),
-                            );
-                            _calculateStats();
-                          },
-                        ),
-                        _buildMenuButton(
-                          icon: Icons.map_rounded,
-                          label: "Peta Zonasi",
-                          color: const Color(0xFF143B59),
-                          onTap: () => widget.onNavigateToTab(1),
+                      const SizedBox(height: 12),
+
+                      // --- STATISTIK KINERJA SESUAI ROLE ---
+                      if (_role == 'cadre')
+                        _buildFullWidthStatCard(
+                          title: "Total Laporan Saya",
+                          value: "$_myTotalReports Laporan",
+                          color: Colors.blue,
+                          icon: Icons.history_edu_rounded,
                         ),
 
-                        // Menu Khusus Kader: Sinkronisasi Offline (Contoh)
-                        if (_role == 'cadre')
-                          _buildMenuButton(
-                            icon: Icons.sync_rounded,
-                            label: "Sinkronisasi",
-                            color: const Color(0xFFFF6D00),
-                            badge: unsyncedCount > 0 ? "$unsyncedCount" : null,
-                            onTap: () => widget.onNavigateToTab(0),
-                          ),
-
-                        // Menu Khusus Officer: Validasi Laporan
-                        if (_role == 'officer')
-                          _buildMenuButton(
-                            icon: Icons.checklist_rtl_rounded,
-                            label: "Validasi",
-                            color: Colors.orange,
-                            onTap: () => widget.onNavigateToTab(
-                              0,
-                            ), // Asumsi Tab 0 adalah Validasi di Officer Nav
-                          ),
-                      ],
-                    ),
+                      if (_role == 'officer')
+                        _buildFullWidthStatCard(
+                          title: "Antrean Validasi Laporan",
+                          value: "$_pendingValidations Menunggu",
+                          color: Colors.orange,
+                          icon: Icons.pending_actions_rounded,
+                        ),
+                    ],
                   ],
                 ),
               ),
@@ -371,6 +373,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // UI Helper: Kartu Setengah Lebar Layar
   Widget _buildStatCard({
     required String title,
     required String value,
@@ -438,6 +441,67 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // UI Helper: Kartu Panjang Penuh Layar
+  Widget _buildFullWidthStatCard({
+    required String title,
+    required String value,
+    required Color color,
+    required IconData icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.05),
+            spreadRadius: 1,
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 28),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMenuButton({
     required IconData icon,
     required String label,
@@ -474,28 +538,6 @@ class _HomePageState extends State<HomePage> {
               ),
             ],
           ),
-          if (badge != null)
-            Positioned(
-              top: 12,
-              right: 20,
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: const BoxDecoration(
-                  color: Colors.red,
-                  shape: BoxShape.circle,
-                ),
-                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-                child: Text(
-                  badge,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 9,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
         ],
       ),
     );
