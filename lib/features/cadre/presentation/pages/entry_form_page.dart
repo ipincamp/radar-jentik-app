@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -5,6 +7,7 @@ import 'package:dio/dio.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/local_db/db_helper.dart';
 
 // --- KELAS BANTUAN UNTUK WADAH STANDAR ---
 class ContainerInput {
@@ -238,44 +241,30 @@ class _EntryFormPageState extends State<EntryFormPage> {
     setState(() => _isLoading = true);
 
     try {
-      String? uploadedPhotoUrl = await _uploadPhoto();
-      if (uploadedPhotoUrl == null)
-        throw Exception("Gagal mendapatkan link foto dari server.");
-
+      // 1. Kumpulkan Data Wadah
       List<Map<String, dynamic>> containerList = [];
-
-      // 1. Kumpulkan Data Wadah Standar
       for (var c in _standardContainers) {
-        int inspected = int.tryParse(c.inspectedCtrl.text) ?? 0;
-        int positive = int.tryParse(c.positiveCtrl.text) ?? 0;
-
-        // Opsional: Anda bisa mengirim semua wadah atau hanya yang jumlahnya > 0
         containerList.add({
           "container_type_id": c.id,
-          "inspected_count": inspected,
-          "positive_count": positive,
+          "inspected_count": int.tryParse(c.inspectedCtrl.text) ?? 0,
+          "positive_count": int.tryParse(c.positiveCtrl.text) ?? 0,
         });
       }
-
-      // 2. Kumpulkan Data Wadah "Lain-lain" (Custom Name)
       if (_otherContainerId != null) {
         for (var oc in _otherContainers) {
-          int inspected = int.tryParse(oc.inspectedCtrl.text) ?? 0;
-          int positive = int.tryParse(oc.positiveCtrl.text) ?? 0;
           String customName = oc.customNameCtrl.text.trim();
-
-          // Kirim hanya jika user mengisi nama wadahnya
           if (customName.isNotEmpty) {
             containerList.add({
               "container_type_id": _otherContainerId,
-              "custom_name": customName, // Ini format custom name-nya
-              "inspected_count": inspected,
-              "positive_count": positive,
+              "custom_name": customName,
+              "inspected_count": int.tryParse(oc.inspectedCtrl.text) ?? 0,
+              "positive_count": int.tryParse(oc.positiveCtrl.text) ?? 0,
             });
           }
         }
       }
 
+      // 2. Susun Payload (Tanpa photo_url dulu)
       final payload = {
         "village_id": _selectedVillageId,
         "rt": _rtController.text.trim(),
@@ -283,19 +272,51 @@ class _EntryFormPageState extends State<EntryFormPage> {
         "family_head_name": _headNameController.text.trim(),
         "latitude": double.tryParse(_latController.text) ?? 0.0,
         "longitude": double.tryParse(_lngController.text) ?? 0.0,
-        "photo_url": uploadedPhotoUrl,
         "inspected_at": DateTime.now().toIso8601String(),
-        "containers": containerList, // Hasil penggabungan masuk ke sini
+        "containers": containerList,
       };
 
-      final response = await _apiClient.dio.post('/reports', data: payload);
+      // 3. CEK KONEKSI INTERNET
+      var connectivityResult = await (Connectivity().checkConnectivity());
+      bool hasInternet = connectivityResult != ConnectivityResult.none;
 
-      if (response.statusCode == 201) {
+      if (hasInternet) {
+        // --- JIKA ONLINE: LANGSUNG UPLOAD & KIRIM KE BACKEND ---
+        String? uploadedPhotoUrl = await _uploadPhoto();
+        if (uploadedPhotoUrl == null)
+          throw Exception("Gagal mendapatkan link foto dari server.");
+
+        payload["photo_url"] = uploadedPhotoUrl; // Masukkan URL foto
+
+        final response = await _apiClient.dio.post('/reports', data: payload);
+        if (response.statusCode == 201) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Laporan berhasil dikirim!'),
+                backgroundColor: Colors.green,
+              ),
+            );
+            Navigator.pop(context);
+          }
+        }
+      } else {
+        // --- JIKA OFFLINE: SIMPAN KE SQFLITE LOKAL (STORE) ---
+        String payloadJson = jsonEncode(payload); // Ubah Map ke String JSON
+
+        await DatabaseHelper.instance.insertPendingReport(
+          localImagePath: _imageFile!.path, // Simpan lokasi fisik foto di HP
+          payloadJson: payloadJson, // Simpan data teks JSON
+        );
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Laporan berhasil dikirim!'),
-              backgroundColor: Colors.green,
+              content: Text(
+                'Anda Sedang Offline! Laporan disimpan di Antrean Sinkronisasi.',
+              ),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 4),
             ),
           );
           Navigator.pop(context);
@@ -303,17 +324,15 @@ class _EntryFormPageState extends State<EntryFormPage> {
       }
     } on DioException catch (e) {
       String errMsg = e.message ?? 'Gagal mengirim laporan';
-      if (mounted) {
+      if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(errMsg), backgroundColor: Colors.red),
         );
-      }
     } catch (e) {
-      if (mounted) {
+      if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
         );
-      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

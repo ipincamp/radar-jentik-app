@@ -1,7 +1,11 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
-import '../../../gis_map/data/models/risk_point_model.dart';
-import '../../../gis_map/domain/entities/risk_point.dart';
-import '../../../report_entry/domain/entities/larvae_report.dart';
+import 'package:dio/dio.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+
+import '../../../../core/network/api_client.dart';
+import '../../../../core/local_db/db_helper.dart';
 
 class SyncDashboardPage extends StatefulWidget {
   const SyncDashboardPage({super.key});
@@ -11,54 +15,116 @@ class SyncDashboardPage extends StatefulWidget {
 }
 
 class _SyncDashboardPageState extends State<SyncDashboardPage> {
-  List<LarvaeReport> unsyncedReports = [];
-  bool isSyncing = false;
+  final _apiClient = ApiClient();
+
+  List<Map<String, dynamic>> _pendingReports = [];
+  bool _isLoading = true;
+  bool _isSyncing = false;
+
+  int _successCount = 0;
+  int _failCount = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _loadPendingReports();
   }
 
-  void _loadData() {
+  Future<void> _loadPendingReports() async {
+    setState(() => _isLoading = true);
+    final data = await DatabaseHelper.instance.getPendingReports();
     setState(() {
-      unsyncedReports = MockDatabase.localReports
-          .where((r) => !r.isSynced)
-          .toList();
+      _pendingReports = data;
+      _isLoading = false;
     });
   }
 
-  Future<void> _syncData() async {
-    if (unsyncedReports.isEmpty) return;
-    setState(() => isSyncing = true);
-
-    // Simulasi proses upload
-    await Future.delayed(const Duration(seconds: 2));
-
-    setState(() {
-      for (var report in unsyncedReports) {
-        report.isSynced = true; // Tandai sukses
-        // Masukkan ke Peta
-        MockDatabase.mapData.add(
-          RiskPoint(
-            latitude: report.latitude,
-            longitude: report.longitude,
-            value: report.isPositive ? 1.0 : 0.0,
-            level: report.isPositive ? RiskLevel.danger : RiskLevel.safe,
-            notes: "${report.headOfFamily} - ${report.address}",
-            imagePath: report.imagePath,
-            timestamp: report.timestamp,
+  Future<void> _startSync() async {
+    // 1. Cek Internet
+    var connectivityResult = await (Connectivity().checkConnectivity());
+    if (connectivityResult == ConnectivityResult.none) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Tidak ada koneksi internet. Cari sinyal terlebih dahulu!',
           ),
-        );
-      }
-      isSyncing = false;
-      _loadData(); // Refresh UI
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isSyncing = true;
+      _successCount = 0;
+      _failCount = 0;
     });
+
+    // 2. Loop semua data di SQLite (FORWARD)
+    for (var report in _pendingReports) {
+      int id = report['id'];
+      String localImagePath = report['local_image_path'];
+      String payloadJson = report['payload_json'];
+
+      try {
+        // Cek apakah file foto masih ada di HP
+        File imageFile = File(localImagePath);
+        if (!imageFile.existsSync()) {
+          _failCount++;
+          continue;
+        }
+
+        // A. Upload Foto
+        String fileName = localImagePath.split('/').last;
+        FormData formData = FormData.fromMap({
+          "photo": await MultipartFile.fromFile(
+            localImagePath,
+            filename: fileName,
+          ),
+        });
+
+        final uploadRes = await _apiClient.dio.post('/uploads', data: formData);
+
+        if (uploadRes.statusCode == 200 || uploadRes.statusCode == 201) {
+          String photoUrl = uploadRes.data['data']['photo_url'];
+
+          // B. Decode JSON lokal & masukkan photo_url
+          Map<String, dynamic> payload = jsonDecode(payloadJson);
+          payload["photo_url"] = photoUrl;
+
+          // C. Kirim ke Backend
+          final reportRes = await _apiClient.dio.post(
+            '/reports',
+            data: payload,
+          );
+
+          if (reportRes.statusCode == 201) {
+            // D. Jika Berhasil, hapus dari database lokal
+            await DatabaseHelper.instance.deletePendingReport(id);
+            _successCount++;
+          } else {
+            _failCount++;
+          }
+        }
+      } catch (e) {
+        _failCount++;
+      }
+    }
+
+    // 3. Selesai Sinkronisasi
+    setState(() => _isSyncing = false);
+    _loadPendingReports(); // Refresh tampilan
 
     if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Sinkronisasi Selesai!")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Sinkronisasi Selesai! Berhasil: $_successCount, Gagal: $_failCount',
+          ),
+          backgroundColor: _failCount == 0 ? Colors.green : Colors.orange,
+          duration: const Duration(seconds: 4),
+        ),
+      );
     }
   }
 
@@ -68,118 +134,152 @@ class _SyncDashboardPageState extends State<SyncDashboardPage> {
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
         title: const Text(
-          "Status Sinkronisasi",
+          'Sinkronisasi Data',
           style: TextStyle(color: Colors.white),
         ),
-        backgroundColor: const Color(0xFF143B59), // Biru gelap
-        elevation: 0,
+        backgroundColor: const Color(0xFFFF6D00), // Warna oranye pembeda
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: Column(
-        children: [
-          // Header Status
-          Container(
-            color: const Color(0xFF143B59),
-            padding: const EdgeInsets.all(24),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
               children: [
-                Expanded(
-                  child: Text(
-                    "STATUS SINKRONISASI:\n${unsyncedReports.length} LAPORAN LURING",
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  width: double.infinity,
+                  color: Colors.white,
+                  child: Column(
+                    children: [
+                      Icon(
+                        _pendingReports.isEmpty
+                            ? Icons.cloud_done
+                            : Icons.cloud_off_rounded,
+                        size: 80,
+                        color: _pendingReports.isEmpty
+                            ? Colors.green
+                            : Colors.orange,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        _pendingReports.isEmpty
+                            ? 'Semua Data Telah Tersinkronisasi'
+                            : '${_pendingReports.length} Laporan Menunggu Pengiriman',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Pastikan Anda berada di area dengan koneksi internet (4G/WiFi) yang stabil sebelum memulai sinkronisasi.',
+                        style: TextStyle(color: Colors.grey[600]),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                   ),
                 ),
-                isSyncing
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Icon(
-                        Icons.cloud_off,
-                        color: Colors.tealAccent,
-                        size: 40,
-                      ),
+                const SizedBox(height: 24),
+
+                // Menampilkan progres jika sedang syncing
+                if (_isSyncing)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                    child: Column(
+                      children: [
+                        const LinearProgressIndicator(color: Color(0xFFFF6D00)),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Mempersiapkan pengiriman data...',
+                          style: TextStyle(
+                            color: Colors.grey[700],
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                Expanded(
+                  child: _pendingReports.isEmpty
+                      ? const SizedBox.shrink()
+                      : ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: _pendingReports.length,
+                          itemBuilder: (context, index) {
+                            final report = _pendingReports[index];
+                            final payload = jsonDecode(report['payload_json']);
+                            final rtRw =
+                                'RT ${payload['rt']} / RW ${payload['rw']}';
+
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              child: ListTile(
+                                leading: const CircleAvatar(
+                                  backgroundColor: Colors.orange,
+                                  child: Icon(
+                                    Icons.upload_file,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                title: Text(
+                                  payload['family_head_name'] ?? 'Data Warga',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                subtitle: Text(rtRw),
+                                trailing: const Icon(
+                                  Icons.sync_problem,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
               ],
             ),
-          ),
-
-          // List Laporan
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: unsyncedReports.length,
-              itemBuilder: (context, index) {
-                final r = unsyncedReports[index];
-                final timeStr =
-                    "${r.timestamp.hour.toString().padLeft(2, '0')}:${r.timestamp.minute.toString().padLeft(2, '0')} WIB";
-
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  child: ListTile(
-                    title: Text(
-                      r.headOfFamily,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("Lokasi, Jentik (${r.isPositive ? '+' : '-'})"),
-                        const SizedBox(height: 4),
-                        Text(
-                          timeStr,
-                          style: const TextStyle(color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                    trailing: const Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Icon(
-                          Icons.notifications_off,
-                          color: Colors.red,
-                          size: 16,
-                        ),
-                        SizedBox(height: 4),
-                        Text(
-                          "Belum Terkirim",
-                          style: TextStyle(color: Colors.red, fontSize: 10),
-                        ),
-                      ],
-                    ),
+      bottomNavigationBar: _pendingReports.isEmpty
+          ? null
+          : Container(
+              padding: const EdgeInsets.all(24),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black12,
+                    blurRadius: 10,
+                    offset: Offset(0, -5),
                   ),
-                );
-              },
-            ),
-          ),
-
-          // Tombol Sinkronisasi
-          Container(
-            padding: const EdgeInsets.all(16),
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF6D00), // Warna Orange
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                ],
+              ),
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF6D00),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+                onPressed: _isSyncing ? null : _startSync,
+                icon: _isSyncing
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(Icons.sync, color: Colors.white),
+                label: Text(
+                  _isSyncing ? 'MENGIRIM DATA...' : 'SINKRONISASI SEKARANG',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
               ),
-              onPressed: isSyncing || unsyncedReports.isEmpty
-                  ? null
-                  : _syncData,
-              child: const Text(
-                "SINKRONISASI DATA",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
             ),
-          ),
-        ],
-      ),
     );
   }
 }
