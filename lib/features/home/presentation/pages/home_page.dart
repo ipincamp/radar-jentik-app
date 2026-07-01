@@ -6,6 +6,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 
 import '../../../../core/network/api_client.dart';
+import '../../../../core/local_db/db_helper.dart';
+import '../../../sync_dashboard/presentation/pages/sync_dashboard_page.dart';
 import 'package:app/features/report_entry/presentation/pages/entry_form_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -29,11 +31,14 @@ class _HomePageState extends State<HomePage> {
   bool _isDownloading = false;
   bool _isLoadingStats = true;
 
-  // Variabel Statistik Nyata (Real API)
+  // Variabel Statistik Nyata (Real API + SQLite)
   int _totalDanger = 0;
   int _totalSafe = 0;
   int _myTotalReports = 0;
   int _pendingValidations = 0;
+
+  // TAMBAHAN: Variabel untuk antrean sinkronisasi
+  int _unsyncedCount = 0;
 
   @override
   void initState() {
@@ -73,10 +78,18 @@ class _HomePageState extends State<HomePage> {
   }
 
   // ==========================================
-  // 2. Fungsi Hitung Statistik (API Asli)
+  // 2. Fungsi Hitung Statistik (API Asli + SQLite)
   // ==========================================
   Future<void> _fetchStats() async {
     try {
+      // --- Hitung Antrean Lokal SQFLITE ---
+      final localReports = await DatabaseHelper.instance.getPendingReports();
+      if (mounted) {
+        setState(() {
+          _unsyncedCount = localReports.length;
+        });
+      }
+
       // A. Statistik Wilayah (Berdasarkan Data Peta Zonasi / Validasi 'accept')
       final mapResponse = await _apiClient.dio.get('/reports/map');
       if (mapResponse.statusCode == 200) {
@@ -101,7 +114,6 @@ class _HomePageState extends State<HomePage> {
 
       // B. Statistik Kinerja berdasarkan Role
       if (_role == 'cadre') {
-        // Panggil endpoint History cukup 1 baris saja, kita hanya butuh Meta Data Total
         final historyResponse = await _apiClient.dio.get(
           '/reports/history',
           queryParameters: {'page': 1, 'limit': 1},
@@ -115,7 +127,6 @@ class _HomePageState extends State<HomePage> {
           }
         }
       } else if (_role == 'officer') {
-        // Panggil endpoint Pending untuk melihat sisa antrean validasi
         final pendingResponse = await _apiClient.dio.get(
           '/reports/pending',
           queryParameters: {'page': 1, 'limit': 1},
@@ -313,6 +324,104 @@ class _HomePageState extends State<HomePage> {
                           icon: Icons.pending_actions_rounded,
                         ),
                     ],
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // --- SEKSI MENU PINTAR ---
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Pintasan",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF143B59),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    GridView.count(
+                      crossAxisCount: 3,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      children: [
+                        /*
+                        _buildMenuButton(
+                          icon: Icons.add_location_alt_rounded,
+                          label: "Lapor Jentik",
+                          color: Colors.teal,
+                          onTap: () async {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const EntryFormPage(),
+                              ),
+                            );
+                            _initializeDashboard(); // Refresh stats setelah melapor
+                          },
+                        ),
+                        _buildMenuButton(
+                          icon: Icons.map_rounded,
+                          label: "Peta Zonasi",
+                          color: const Color(0xFF143B59),
+                          onTap: () => widget.onNavigateToTab(1),
+                        ),
+                        */
+
+                        // ===========================================
+                        // MENU KHUSUS KADER (Sinkronisasi & Riwayat)
+                        // ===========================================
+                        if (_role == 'cadre') ...[
+                          _buildMenuButton(
+                            icon: Icons.sync_rounded,
+                            label: "Sinkronisasi",
+                            color: const Color(0xFFFF6D00),
+                            // Munculkan notifikasi angka (badge) jika ada antrean
+                            badge: _unsyncedCount > 0
+                                ? "$_unsyncedCount"
+                                : null,
+                            onTap: () async {
+                              await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const SyncDashboardPage(),
+                                ),
+                              );
+                              _initializeDashboard(); // Refresh angka antrean setelah sinkronisasi
+                            },
+                          ),
+                          /*
+                          _buildMenuButton(
+                            icon: Icons.history_rounded,
+                            label: "Riwayat",
+                            color: Colors.blue,
+                            onTap: () => widget.onNavigateToTab(
+                              1,
+                            ), // Arahkan ke Tab Riwayat
+                          ),
+                          */
+                        ],
+
+                        // ===========================================
+                        // MENU KHUSUS OFFICER (Validasi)
+                        // ===========================================
+                        /*
+                        if (_role == 'officer')
+                          _buildMenuButton(
+                            icon: Icons.checklist_rtl_rounded,
+                            label: "Validasi",
+                            color: Colors.orange,
+                            onTap: () => widget.onNavigateToTab(0),
+                          ),
+                          */
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -538,6 +647,28 @@ class _HomePageState extends State<HomePage> {
               ),
             ],
           ),
+          if (badge != null)
+            Positioned(
+              top: 12,
+              right: 20,
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: const BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                ),
+                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                child: Text(
+                  badge,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
         ],
       ),
     );
