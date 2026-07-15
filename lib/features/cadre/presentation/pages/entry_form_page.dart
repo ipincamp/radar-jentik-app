@@ -344,30 +344,31 @@ class _EntryFormPageState extends State<EntryFormPage> {
           children: [
             InkWell(
               onTap: onDecrement,
-              child: Icon(Icons.remove_circle_outline, color: color, size: 28),
+              child: Icon(Icons.remove_circle_outline, color: color, size: 36),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 12),
             SizedBox(
-              width: 24,
+              width: 32,
               child: Text(
                 '$value',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  fontSize: 18,
+                  fontSize: 22,
                   fontWeight: FontWeight.bold,
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 12),
             InkWell(
               onTap: onIncrement,
-              child: Icon(Icons.add_circle_outline, color: color, size: 28),
+              child: Icon(Icons.add_circle_outline, color: color, size: 36),
             ),
           ],
         ),
+        const SizedBox(height: 4),
         Text(
           label,
-          style: const TextStyle(fontSize: 11, color: Colors.black87),
+          style: const TextStyle(fontSize: 13, color: Colors.black87),
         ),
       ],
     );
@@ -704,7 +705,7 @@ class _EntryFormPageState extends State<EntryFormPage> {
                 ),
                 const SizedBox(height: 16),
 
-                // Daftar Wadah yang Ditambahkan (1 Baris per Wadah)
+                // Daftar Wadah yang Ditambahkan (Format Grid 2x2 per kartu)
                 if (_addedContainers.isEmpty)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 20),
@@ -727,98 +728,105 @@ class _EntryFormPageState extends State<EntryFormPage> {
                       side: BorderSide(color: Colors.blue.shade100),
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 12,
-                      ),
-                      child: Row(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Kolom Nama Wadah
-                          Expanded(
-                            flex: 3,
-                            child: container.isCustom
-                                ? TextFormField(
-                                    controller: container.customNameCtrl,
-                                    decoration: const InputDecoration(
-                                      hintText: 'Nama wadah...',
-                                      isDense: true,
-                                      border: UnderlineInputBorder(),
-                                    ),
-                                    style: const TextStyle(fontSize: 14),
-                                  )
-                                : Text(
-                                    container.baseName,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                    ),
-                                  ),
+                          // BARIS 1: Nama Wadah (Kiri) & Tombol Hapus (Kanan)
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: container.isCustom
+                                    ? TextFormField(
+                                        controller: container.customNameCtrl,
+                                        decoration: const InputDecoration(
+                                          hintText:
+                                              'Nama wadah (mis. Ember Bekas)',
+                                          isDense: true,
+                                          contentPadding: EdgeInsets.symmetric(
+                                            vertical: 8,
+                                          ),
+                                        ),
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      )
+                                    : Text(
+                                        container.baseName,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                              ),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  color: Colors.red,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _addedContainers.remove(container);
+                                  });
+                                },
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 8),
-                          // Counter Jumlah Diperiksa (Hitam)
-                          _buildCounter(
-                            value: container.inspectedCount,
-                            label: 'jumlah',
-                            color: Colors.black,
-                            onDecrement: () {
-                              if (container.inspectedCount > 0) {
-                                setState(() {
-                                  container.inspectedCount--;
-                                  // Pastikan positif tidak melebihi yang diperiksa
-                                  if (container.positiveCount >
-                                      container.inspectedCount) {
-                                    container.positiveCount =
-                                        container.inspectedCount;
+                          const SizedBox(height: 12),
+                          // BARIS 2: Counter Jumlah (Kiri) & Counter Positif (Kanan)
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _buildCounter(
+                                value: container.inspectedCount,
+                                label: 'jumlah',
+                                color: Colors.black,
+                                onDecrement: () {
+                                  if (container.inspectedCount > 0) {
+                                    setState(() {
+                                      container.inspectedCount--;
+                                      // Pastikan positif tidak melebihi yang diperiksa
+                                      if (container.positiveCount >
+                                          container.inspectedCount) {
+                                        container.positiveCount =
+                                            container.inspectedCount;
+                                      }
+                                    });
                                   }
-                                });
-                              }
-                            },
-                            onIncrement: () {
-                              setState(() => container.inspectedCount++);
-                            },
-                          ),
-                          const SizedBox(width: 12),
-                          // Counter Positif Jentik (Merah)
-                          _buildCounter(
-                            value: container.positiveCount,
-                            label: 'positif',
-                            color: const Color(0xFFA11D20), // Merah gelap
-                            onDecrement: () {
-                              if (container.positiveCount > 0) {
-                                setState(() => container.positiveCount--);
-                              }
-                            },
-                            onIncrement: () {
-                              // Cegah positif melebihi total yang diperiksa
-                              if (container.positiveCount <
-                                  container.inspectedCount) {
-                                setState(() => container.positiveCount++);
-                              } else {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Jumlah positif tidak boleh melebihi jumlah diperiksa!',
-                                    ),
-                                    duration: Duration(seconds: 1),
-                                  ),
-                                );
-                              }
-                            },
-                          ),
-                          // Tombol Hapus
-                          IconButton(
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                            icon: const Icon(
-                              Icons.close,
-                              color: Colors.grey,
-                              size: 20,
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                _addedContainers.remove(container);
-                              });
-                            },
+                                },
+                                onIncrement: () {
+                                  setState(() => container.inspectedCount++);
+                                },
+                              ),
+                              _buildCounter(
+                                value: container.positiveCount,
+                                label: 'positif',
+                                color: const Color(0xFFA11D20), // Merah gelap
+                                onDecrement: () {
+                                  if (container.positiveCount > 0) {
+                                    setState(() => container.positiveCount--);
+                                  }
+                                },
+                                onIncrement: () {
+                                  // Cegah positif melebihi total yang diperiksa
+                                  if (container.positiveCount <
+                                      container.inspectedCount) {
+                                    setState(() => container.positiveCount++);
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'Jumlah positif tidak boleh melebihi jumlah diperiksa!',
+                                        ),
+                                        duration: Duration(seconds: 1),
+                                      ),
+                                    );
+                                  }
+                                },
+                              ),
+                            ],
                           ),
                         ],
                       ),
