@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 class CadreReportDetailPage extends StatelessWidget {
   final Map<String, dynamic> reportData;
@@ -13,20 +15,90 @@ class CadreReportDetailPage extends StatelessWidget {
     this.localImagePath,
   });
 
+  // ==========================================
+  // DIALOG PREVIEW LOKASI DI PETA
+  // ==========================================
+  void _showLocationOnMap(BuildContext context, double lat, double lng) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: SizedBox(
+            height: 400,
+            child: Column(
+              children: [
+                AppBar(
+                  title: const Text(
+                    'Lokasi Laporan',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                  automaticallyImplyLeading: false,
+                  elevation: 0,
+                  actions: [
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+                Expanded(
+                  child: FlutterMap(
+                    options: MapOptions(
+                      initialCenter: LatLng(lat, lng),
+                      initialZoom: 17.0,
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate:
+                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.radarjentik.app',
+                      ),
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: LatLng(lat, lng),
+                            width: 50,
+                            height: 50,
+                            alignment: Alignment.topCenter,
+                            child: const Icon(
+                              Icons.location_on,
+                              color: Colors.red,
+                              size: 50,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // --- PARSING DATA (BISA DARI API ATAU SQLITE LOKAL) ---
-
-    // 1. Lokasi & Waktu
+    // --- PARSING DATA ---
     final headName = reportData['family_head_name'] ?? '-';
     final rtRw = 'RT ${reportData['rt']} / RW ${reportData['rw']}';
-
     String villageName = '-';
+
     if (!isOffline && reportData['village'] != null) {
       villageName = reportData['village']['name'] ?? '-';
     } else if (isOffline) {
-      villageName = 'Menunggu Sinkronisasi'; // Offline belum preload nama desa
+      villageName = 'Menunggu Sinkronisasi';
     }
+
+    // Parsing Koordinat
+    final lat =
+        double.tryParse(reportData['latitude']?.toString() ?? '0') ?? 0.0;
+    final lng =
+        double.tryParse(reportData['longitude']?.toString() ?? '0') ?? 0.0;
 
     String dateStr = '-';
     if (reportData['inspected_at'] != null) {
@@ -37,17 +109,16 @@ class CadreReportDetailPage extends StatelessWidget {
       } catch (_) {}
     }
 
-    // 2. Status Jentik
+    // Status Jentik
     bool isPositive = false;
     if (!isOffline) {
       isPositive = reportData['larvae_status'] == 1;
     } else {
-      // Jika offline, hitung manual dari jumlah wadah positif
       final containers = reportData['containers'] as List<dynamic>? ?? [];
       isPositive = containers.any((c) => (c['positive_count'] ?? 0) > 0);
     }
 
-    // 3. Status Validasi
+    // Status Validasi
     String statusLabel = 'Menunggu Sinkronisasi';
     Color statusColor = Colors.orange;
     String? rejectionReason;
@@ -68,7 +139,7 @@ class CadreReportDetailPage extends StatelessWidget {
       }
     }
 
-    // 4. Data Wadah (Difilter hanya yang memiliki nilai > 0)
+    // Data Wadah
     final rawContainersList = isOffline
         ? (reportData['containers'] as List<dynamic>? ?? [])
         : (reportData['container_details'] as List<dynamic>? ?? []);
@@ -180,7 +251,6 @@ class CadreReportDetailPage extends StatelessWidget {
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 onPressed: () {
-                  // Cek apakah ada foto lokal atau foto dari server
                   if (isOffline && localImagePath != null) {
                     _showPhotoDialog(
                       context,
@@ -231,6 +301,7 @@ class CadreReportDetailPage extends StatelessWidget {
                     _buildDetailRow('Kepala Keluarga', headName),
                     _buildDetailRow('Alamat', rtRw),
                     _buildDetailRow('Desa', villageName),
+                    _buildDetailRow('Koordinat', '$lat, $lng'),
                     _buildDetailRow('Tanggal Lapor', dateStr),
                     _buildDetailRow(
                       'Status Jentik',
@@ -238,6 +309,18 @@ class CadreReportDetailPage extends StatelessWidget {
                           ? 'POSITIF (Ditemukan)'
                           : 'NEGATIF (Bebas Jentik)',
                       valueColor: isPositive ? Colors.red : Colors.green,
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _showLocationOnMap(context, lat, lng),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        icon: const Icon(Icons.map, color: Colors.blue),
+                        label: const Text('Lihat Lokasi di Peta'),
+                      ),
                     ),
                   ],
                 ),
@@ -260,12 +343,10 @@ class CadreReportDetailPage extends StatelessWidget {
               )
             else
               ...containersList.map((c) {
-                // Menentukan nama wadah baik saat online / offline
                 String name = 'Wadah';
                 if (!isOffline && c['container_type'] != null) {
                   name = c['container_type']['name'] ?? 'Wadah Standar';
                 }
-
                 final customName = c['custom_name'];
                 if (customName != null && customName.toString().isNotEmpty) {
                   name = isOffline ? customName : '$name - $customName';

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import '../../../../core/network/api_client.dart';
 
 class OfficerValidationDetailPage extends StatefulWidget {
@@ -61,7 +63,9 @@ class _OfficerValidationDetailPageState
     }
   }
 
+  // ==========================================
   // BOTTOM SHEET: TOLAK LAPORAN
+  // ==========================================
   void _showRejectBottomSheet() {
     final TextEditingController reasonController = TextEditingController();
     showModalBottomSheet(
@@ -94,7 +98,7 @@ class _OfficerValidationDetailPageState
               //     size: 48,
               //   ),
               // ),
-              const SizedBox(height: 16),
+              // const SizedBox(height: 16),
               const Text(
                 'Tolak Laporan',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
@@ -104,7 +108,7 @@ class _OfficerValidationDetailPageState
               const SizedBox(height: 12),
               TextField(
                 controller: reasonController,
-                maxLines: 6,
+                maxLines: 3,
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
                   hintText: 'Contoh: Foto kurang jelas, lokasi salah...',
@@ -161,7 +165,9 @@ class _OfficerValidationDetailPageState
     );
   }
 
+  // ==========================================
   // BOTTOM SHEET: TERIMA LAPORAN
+  // ==========================================
   void _showAcceptBottomSheet() {
     showModalBottomSheet(
       context: context,
@@ -187,7 +193,7 @@ class _OfficerValidationDetailPageState
             //     size: 48,
             //   ),
             // ),
-            const SizedBox(height: 16),
+            // const SizedBox(height: 16),
             const Text(
               'Konfirmasi Terima',
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
@@ -238,6 +244,72 @@ class _OfficerValidationDetailPageState
     );
   }
 
+  // ==========================================
+  // DIALOG PREVIEW LOKASI DI PETA
+  // ==========================================
+  void _showLocationOnMap(BuildContext context, double lat, double lng) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: SizedBox(
+            height: 400,
+            child: Column(
+              children: [
+                AppBar(
+                  title: const Text(
+                    'Lokasi Laporan',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                  automaticallyImplyLeading: false,
+                  elevation: 0,
+                  actions: [
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+                Expanded(
+                  child: FlutterMap(
+                    options: MapOptions(
+                      initialCenter: LatLng(lat, lng),
+                      initialZoom: 17.0,
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate:
+                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.radarjentik.app',
+                      ),
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: LatLng(lat, lng),
+                            width: 50,
+                            height: 50,
+                            alignment: Alignment.topCenter,
+                            child: const Icon(
+                              Icons.location_on,
+                              color: Colors.red,
+                              size: 50,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final report = widget.reportData;
@@ -255,6 +327,10 @@ class _OfficerValidationDetailPageState
     final villageName = report['village'] != null
         ? report['village']['name']
         : '-';
+
+    // Parsing Koordinat
+    final lat = double.tryParse(report['latitude']?.toString() ?? '0') ?? 0.0;
+    final lng = double.tryParse(report['longitude']?.toString() ?? '0') ?? 0.0;
 
     String dateStr = '-';
     if (report['inspected_at'] != null) {
@@ -380,10 +456,7 @@ class _OfficerValidationDetailPageState
                             'Alamat',
                             'RT ${report['rt']} / RW ${report['rw']}',
                           ),
-                          _buildDetailRow(
-                            'Koordinat',
-                            '${report['latitude']}, ${report['longitude']}',
-                          ),
+                          _buildDetailRow('Koordinat', '$lat, $lng'),
                           _buildDetailRow('Tanggal Survei', dateStr),
                           _buildDetailRow(
                             'Status Jentik',
@@ -391,6 +464,21 @@ class _OfficerValidationDetailPageState
                                 ? 'POSITIF (Ditemukan)'
                                 : 'NEGATIF (Bebas Jentik)',
                             valueColor: isPositive ? Colors.red : Colors.green,
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () =>
+                                  _showLocationOnMap(context, lat, lng),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                              ),
+                              icon: const Icon(Icons.map, color: Colors.blue),
+                              label: const Text('Lihat Lokasi di Peta'),
+                            ),
                           ),
                         ],
                       ),
