@@ -20,7 +20,7 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
   void initState() {
     super.initState();
     // Jika koordinat sebelumnya sudah ada, gunakan itu.
-    // Jika tidak, set default ke area Puskesmas II Cilongok.
+    // Jika tidak, set default ke area Puskesmas Cilongok II.
     _selectedLocation = LatLng(
       widget.initialLat ?? -7.4025,
       widget.initialLng ?? 109.1670,

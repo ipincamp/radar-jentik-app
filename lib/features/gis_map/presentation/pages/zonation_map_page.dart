@@ -33,7 +33,7 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
   // 4000 kotak
   // final double _gridResolution = 0.0008;
 
-  // Daftar 9 Desa target di Puskesmas II Cilongok
+  // Daftar 9 Desa target di Puskesmas Cilongok II
   final List<String> _targetVillages = [
     'langgongsari',
     'pejogol',
@@ -549,7 +549,7 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Peta Zonasi IDW Puskesmas II Cilongok'),
+        title: const Text('Peta Zonasi IDW Puskesmas Cilongok II'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),

@@ -68,7 +68,7 @@ class _SplashPageState extends State<SplashPage> {
             ),
             SizedBox(height: 10),
             Text(
-              'Puskesmas II Cilongok',
+              'Puskesmas Cilongok II',
               style: TextStyle(fontSize: 16, color: Colors.white70),
             ),
           ],
