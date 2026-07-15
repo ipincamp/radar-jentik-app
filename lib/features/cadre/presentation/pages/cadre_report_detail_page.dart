@@ -68,10 +68,18 @@ class CadreReportDetailPage extends StatelessWidget {
       }
     }
 
-    // 4. Data Wadah
-    final containersList = isOffline
+    // 4. Data Wadah (Difilter hanya yang memiliki nilai > 0)
+    final rawContainersList = isOffline
         ? (reportData['containers'] as List<dynamic>? ?? [])
         : (reportData['container_details'] as List<dynamic>? ?? []);
+
+    final containersList = rawContainersList.where((c) {
+      final inspected =
+          int.tryParse(c['inspected_count']?.toString() ?? '0') ?? 0;
+      final positive =
+          int.tryParse(c['positive_count']?.toString() ?? '0') ?? 0;
+      return inspected > 0 || positive > 0;
+    }).toList();
 
     return Scaffold(
       backgroundColor: Colors.grey[100],
@@ -146,41 +154,55 @@ class CadreReportDetailPage extends StatelessWidget {
             const SizedBox(height: 20),
 
             // ==========================================
-            // FOTO BUKTI
+            // FOTO BUKTI (MENGGUNAKAN POP-UP PREVIEW)
             // ==========================================
             const Text(
               'Foto Bukti',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 10),
-            Container(
+            SizedBox(
               width: double.infinity,
-              height: 250,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: isOffline && localImagePath != null
-                    // Mode Offline: Baca file fisik dari HP
-                    ? Image.file(
-                        File(localImagePath!),
-                        fit: BoxFit.cover,
-                        errorBuilder: (ctx, err, stack) => const Center(
-                          child: Text('Gagal memuat foto lokal'),
-                        ),
-                      )
-                    // Mode Online: Ambil gambar dari URL Server
-                    : reportData['photo_url'] != null
-                    ? Image.network(
-                        reportData['photo_url'],
-                        fit: BoxFit.cover,
-                        errorBuilder: (ctx, err, stack) => const Center(
-                          child: Text('Gagal memuat foto server'),
-                        ),
-                      )
-                    : const Center(child: Text('Tidak ada foto terlampir')),
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  backgroundColor: Colors.blue[50],
+                  foregroundColor: Colors.blue,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: Colors.blue.shade200),
+                  ),
+                ),
+                icon: const Icon(Icons.image),
+                label: const Text(
+                  'Lihat Preview Foto',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                onPressed: () {
+                  // Cek apakah ada foto lokal atau foto dari server
+                  if (isOffline && localImagePath != null) {
+                    _showPhotoDialog(
+                      context,
+                      isLocal: true,
+                      path: localImagePath!,
+                    );
+                  } else if (reportData['photo_url'] != null &&
+                      reportData['photo_url'].toString().isNotEmpty) {
+                    _showPhotoDialog(
+                      context,
+                      isLocal: false,
+                      path: reportData['photo_url'],
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Tidak ada foto terlampir'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                  }
+                },
               ),
             ),
             const SizedBox(height: 20),
@@ -233,7 +255,7 @@ class CadreReportDetailPage extends StatelessWidget {
             const SizedBox(height: 10),
             if (containersList.isEmpty)
               const Text(
-                'Tidak ada rincian wadah.',
+                'Tidak ada rincian wadah yang diisi.',
                 style: TextStyle(color: Colors.grey),
               )
             else
@@ -271,6 +293,53 @@ class CadreReportDetailPage extends StatelessWidget {
             const SizedBox(height: 30),
           ],
         ),
+      ),
+    );
+  }
+
+  // Helper untuk menampilkan dialog pop-up foto
+  void _showPhotoDialog(
+    BuildContext context, {
+    required bool isLocal,
+    required String path,
+  }) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: InteractiveViewer(
+            panEnabled: true,
+            minScale: 0.5,
+            maxScale: 4.0,
+            child: isLocal
+                ? Image.file(
+                    File(path),
+                    fit: BoxFit.contain,
+                    errorBuilder: (ctx, err, stack) => _buildErrorImage(),
+                  )
+                : Image.network(
+                    path,
+                    fit: BoxFit.contain,
+                    errorBuilder: (ctx, err, stack) => _buildErrorImage(),
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Widget fallback jika gagal memuat gambar
+  Widget _buildErrorImage() {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.all(32.0),
+      child: const Text(
+        'Gagal memuat gambar',
+        style: TextStyle(color: Colors.grey),
+        textAlign: TextAlign.center,
       ),
     );
   }

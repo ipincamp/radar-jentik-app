@@ -19,7 +19,6 @@ class _OfficerValidationDetailPageState
 
   Future<void> _validateReport(String status, {String? rejectionReason}) async {
     setState(() => _isLoading = true);
-
     try {
       final reportId = widget.reportData['id'];
       final Map<String, dynamic> payload = {'status': status};
@@ -62,85 +61,179 @@ class _OfficerValidationDetailPageState
     }
   }
 
-  void _showRejectDialog() {
+  // BOTTOM SHEET: TOLAK LAPORAN
+  void _showRejectBottomSheet() {
     final TextEditingController reasonController = TextEditingController();
-
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Tolak Laporan', style: TextStyle(color: Colors.red)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Silakan masukkan alasan penolakan laporan ini:'),
-            const SizedBox(height: 12),
-            TextField(
-              controller: reasonController,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: 'Contoh: Foto kurang jelas, lokasi salah...',
-              ),
-            ),
-          ],
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Batal', style: TextStyle(color: Colors.grey)),
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
-              final reason = reasonController.text.trim();
-              if (reason.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Alasan penolakan wajib diisi!'),
-                    backgroundColor: Colors.orange,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Container(
+              //   padding: const EdgeInsets.all(16),
+              //   decoration: BoxDecoration(
+              //     color: Colors.red[50],
+              //     shape: BoxShape.circle,
+              //   ),
+              //   child: const Icon(
+              //     Icons.cancel_outlined,
+              //     color: Colors.red,
+              //     size: 48,
+              //   ),
+              // ),
+              const SizedBox(height: 16),
+              const Text(
+                'Tolak Laporan',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              const Text('Silakan masukkan alasan penolakan laporan ini:'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: reasonController,
+                maxLines: 6,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: 'Contoh: Foto kurang jelas, lokasi salah...',
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: const Text(
+                        'Batal',
+                        style: TextStyle(color: Colors.grey, fontSize: 16),
+                      ),
+                    ),
                   ),
-                );
-                return;
-              }
-              Navigator.pop(context);
-              _validateReport('reject', rejectionReason: reason);
-            },
-            child: const Text(
-              'Tolak Laporan',
-              style: TextStyle(color: Colors.white),
-            ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      onPressed: () {
+                        final reason = reasonController.text.trim();
+                        if (reason.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Alasan penolakan wajib diisi!'),
+                              backgroundColor: Colors.orange,
+                            ),
+                          );
+                          return;
+                        }
+                        Navigator.pop(context);
+                        _validateReport('reject', rejectionReason: reason);
+                      },
+                      child: const Text(
+                        'Tolak',
+                        style: TextStyle(color: Colors.white, fontSize: 16),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
-  void _showAcceptDialog() {
-    showDialog(
+  // BOTTOM SHEET: TERIMA LAPORAN
+  void _showAcceptBottomSheet() {
+    showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Konfirmasi Terima'),
-        content: const Text(
-          'Apakah Anda yakin ingin menerima laporan ini? Data akan diverifikasi secara permanen.',
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Batal', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            onPressed: () {
-              Navigator.pop(context);
-              _validateReport('accept');
-            },
-            child: const Text(
-              'Ya, Terima',
-              style: TextStyle(color: Colors.white),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Container(
+            //   padding: const EdgeInsets.all(16),
+            //   decoration: BoxDecoration(
+            //     color: Colors.green[50],
+            //     shape: BoxShape.circle,
+            //   ),
+            //   child: const Icon(
+            //     Icons.check_circle_outline,
+            //     color: Colors.green,
+            //     size: 48,
+            //   ),
+            // ),
+            const SizedBox(height: 16),
+            const Text(
+              'Konfirmasi Terima',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            const Text(
+              'Apakah Anda yakin ingin menerima laporan ini? Data akan diverifikasi secara permanen.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: const Text(
+                      'Batal',
+                      style: TextStyle(color: Colors.grey, fontSize: 16),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _validateReport('accept');
+                    },
+                    child: const Text(
+                      'Ya, Terima',
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -148,10 +241,17 @@ class _OfficerValidationDetailPageState
   @override
   Widget build(BuildContext context) {
     final report = widget.reportData;
-    final containers = report['container_details'] as List<dynamic>? ?? [];
+
+    // Filter wadah: Hanya tampilkan wadah yang jumlah diperiksa atau positif lebih dari 0
+    final rawContainers = report['container_details'] as List<dynamic>? ?? [];
+    final containers = rawContainers.where((c) {
+      final inspected = c['inspected_count'] ?? 0;
+      final positive = c['positive_count'] ?? 0;
+      return inspected > 0 || positive > 0;
+    }).toList();
+
     final isPositive = report['larvae_status'] == 1;
     final photoUrl = report['photo_url'];
-
     final villageName = report['village'] != null
         ? report['village']['name']
         : '-';
@@ -181,76 +281,73 @@ class _OfficerValidationDetailPageState
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // FOTO BUKTI (SEKARANG BISA DI-KLIK)
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Foto Bukti',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      if (photoUrl != null && photoUrl.toString().isNotEmpty)
-                        const Text(
-                          'Ketuk foto untuk perbesar',
-                          style: TextStyle(fontSize: 12, color: Colors.blue),
-                        ),
-                    ],
+                  // FOTO BUKTI (MENGGUNAKAN POP-UP PREVIEW)
+                  const Text(
+                    'Foto Bukti',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 10),
-
-                  Container(
+                  SizedBox(
                     width: double.infinity,
-                    height: 250,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: photoUrl != null && photoUrl.toString().isNotEmpty
-                          // Gunakan Material & InkWell agar ada efek saat diklik
-                          ? Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: () {
-                                  // Navigasi ke halaman FullScreen
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => FullScreenImageViewer(
-                                        imageUrl: photoUrl.toString(),
-                                      ),
-                                    ),
-                                  );
-                                },
-                                // Hero Animation agar foto membesar dengan mulus
-                                child: Hero(
-                                  tag: 'photo_$photoUrl',
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        backgroundColor: Colors.blue[50],
+                        foregroundColor: Colors.blue,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(color: Colors.blue.shade200),
+                        ),
+                      ),
+                      icon: const Icon(Icons.image),
+                      label: const Text(
+                        'Lihat Preview Foto',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      onPressed: () {
+                        if (photoUrl != null &&
+                            photoUrl.toString().isNotEmpty) {
+                          showDialog(
+                            context: context,
+                            builder: (_) => Dialog(
+                              backgroundColor: Colors.transparent,
+                              insetPadding: const EdgeInsets.all(16),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: InteractiveViewer(
+                                  panEnabled: true,
+                                  minScale: 0.5,
+                                  maxScale: 4.0,
                                   child: Image.network(
                                     photoUrl,
-                                    fit: BoxFit.cover,
+                                    fit: BoxFit.contain,
                                     errorBuilder: (ctx, err, stack) =>
-                                        const Center(
-                                          child: Text(
+                                        Container(
+                                          color: Colors.white,
+                                          padding: const EdgeInsets.all(32.0),
+                                          child: const Text(
                                             'Gagal memuat gambar',
                                             style: TextStyle(
                                               color: Colors.grey,
                                             ),
+                                            textAlign: TextAlign.center,
                                           ),
                                         ),
                                   ),
                                 ),
                               ),
-                            )
-                          : const Center(
-                              child: Text(
-                                'Tidak ada foto terlampir',
-                                style: TextStyle(color: Colors.grey),
-                              ),
                             ),
+                          );
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Tidak ada foto terlampir'),
+                              backgroundColor: Colors.orange,
+                            ),
+                          );
+                        }
+                      },
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -309,7 +406,7 @@ class _OfficerValidationDetailPageState
                   const SizedBox(height: 10),
                   if (containers.isEmpty)
                     const Text(
-                      'Tidak ada rincian wadah dilaporkan.',
+                      'Tidak ada rincian wadah yang diisi.',
                       style: TextStyle(color: Colors.grey),
                     )
                   else
@@ -319,7 +416,6 @@ class _OfficerValidationDetailPageState
                         defaultName =
                             c['container_type']['name'] ?? defaultName;
                       }
-
                       final customName = c['custom_name'];
                       if (customName != null &&
                           customName.toString().isNotEmpty) {
@@ -346,7 +442,6 @@ class _OfficerValidationDetailPageState
                         ),
                       );
                     }),
-
                   const SizedBox(height: 40),
 
                   // TOMBOL AKSI
@@ -364,7 +459,7 @@ class _OfficerValidationDetailPageState
                             'Tolak',
                             style: TextStyle(fontSize: 16),
                           ),
-                          onPressed: _showRejectDialog,
+                          onPressed: _showRejectBottomSheet,
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -379,7 +474,7 @@ class _OfficerValidationDetailPageState
                             'Terima',
                             style: TextStyle(fontSize: 16, color: Colors.white),
                           ),
-                          onPressed: _showAcceptDialog,
+                          onPressed: _showAcceptBottomSheet,
                         ),
                       ),
                     ],
@@ -416,53 +511,6 @@ class _OfficerValidationDetailPageState
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// =========================================================================
-// WIDGET BARU: HALAMAN UNTUK MELIHAT FOTO UKURAN PENUH (FULL SCREEN)
-// =========================================================================
-class FullScreenImageViewer extends StatelessWidget {
-  final String imageUrl;
-
-  const FullScreenImageViewer({super.key, required this.imageUrl});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black, // Latar belakang hitam untuk fokus ke foto
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        iconTheme: const IconThemeData(color: Colors.white),
-        elevation: 0,
-      ),
-      body: Center(
-        // InteractiveViewer memungkinkan pengguna untuk zoom in/out (cubit) & geser
-        child: InteractiveViewer(
-          panEnabled: true, // Bisa digeser-geser saat di-zoom
-          minScale: 0.5,
-          maxScale: 4.0, // Batas maksimal zoom
-          child: Hero(
-            tag: 'photo_$imageUrl',
-            child: Image.network(
-              imageUrl,
-              fit: BoxFit.contain, // Pastikan seluruh gambar muat di layar
-              errorBuilder: (ctx, err, stack) => const Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.broken_image, color: Colors.white54, size: 50),
-                  SizedBox(height: 10),
-                  Text(
-                    'Gagal memuat gambar',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }
