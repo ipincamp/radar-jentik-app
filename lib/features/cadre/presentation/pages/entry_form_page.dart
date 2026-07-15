@@ -6,8 +6,11 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:dio/dio.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:latlong2/latlong.dart';
+
 import '../../../../core/network/api_client.dart';
 import '../../../../core/local_db/db_helper.dart';
+import '../../../report_entry/presentation/pages/location_picker_page.dart';
 
 class AddedContainer {
   final String id;
@@ -489,27 +492,94 @@ class _EntryFormPageState extends State<EntryFormPage> {
                   validator: (v) => v!.isEmpty ? 'Wajib' : null,
                 ),
                 const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  height: 45,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue[100],
-                      foregroundColor: Colors.blue[900],
+
+                // DUA TOMBOL PILIHAN KOORDINAT
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 45,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue[100],
+                            foregroundColor: Colors.blue[900],
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
+                          onPressed: _isFetchingLocation
+                              ? null
+                              : _getCurrentLocation,
+                          icon: _isFetchingLocation
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.my_location),
+                          label: const Text(
+                            'Otomatis',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
                     ),
-                    onPressed: _isFetchingLocation ? null : _getCurrentLocation,
-                    icon: _isFetchingLocation
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.my_location),
-                    label: const Text(
-                      'Deteksi Koordinat Saat Ini',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SizedBox(
+                        height: 45,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange[100],
+                            foregroundColor: Colors.orange[900],
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
+                          onPressed: () async {
+                            final currentLat = double.tryParse(
+                              _latController.text,
+                            );
+                            final currentLng = double.tryParse(
+                              _lngController.text,
+                            );
+
+                            final LatLng? pickedLocation = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => LocationPickerPage(
+                                  initialLat: currentLat,
+                                  initialLng: currentLng,
+                                ),
+                              ),
+                            );
+
+                            if (pickedLocation != null) {
+                              setState(() {
+                                _latController.text = pickedLocation.latitude
+                                    .toString();
+                                _lngController.text = pickedLocation.longitude
+                                    .toString();
+                              });
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      "Titik koordinat diperbarui secara manual!",
+                                    ),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                          icon: const Icon(Icons.map),
+                          label: const Text(
+                            'Pilih di Peta',
+                            style: TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 Row(
