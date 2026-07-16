@@ -122,8 +122,8 @@ class _LoginPageState extends State<LoginPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.map_rounded, size: 80, color: Colors.blue),
-                const SizedBox(height: 20),
+                // const Icon(Icons.map_rounded, size: 80, color: Colors.blue),
+                // const SizedBox(height: 20),
                 const Text(
                   'Radar Jentik',
                   style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
