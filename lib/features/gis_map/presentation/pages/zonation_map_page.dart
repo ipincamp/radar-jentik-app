@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -16,7 +16,6 @@ class ZonationMapPage extends StatefulWidget {
 class _ZonationMapPageState extends State<ZonationMapPage> {
   final _apiClient = ApiClient();
   bool _isLoading = true;
-
   List<Marker> _markers = [];
   Marker? _tappedMarker;
   List<Polygon> _idwPolygons = [];
@@ -29,9 +28,7 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
   double _maxLon = -180.0;
 
   // supaya lebih halus
-  final double _gridResolution = 0.001;
-  // 4000 kotak
-  // final double _gridResolution = 0.0008;
+  final double _gridResolution = 0.001; // 4000 kotak
 
   // Daftar 9 Desa target di Puskesmas Cilongok II
   final List<String> _targetVillages = [
@@ -46,23 +43,8 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
     'panusupan',
   ];
 
-  // Fungsi untuk membuat gradasi warna yang mulus (Hijau -> Kuning -> Merah)
-  /*
-  Color _getGradientColor(double value) {
-    if (value <= 50) {
-      // Jika nilai 0 - 50: Gradasi dari Hijau ke Kuning
-      return Color.lerp(Colors.green, Colors.yellow, value / 50) ??
-          Colors.green;
-    } else {
-      // Jika nilai 50 - 100: Gradasi dari Kuning ke Merah
-      return Color.lerp(Colors.yellow, Colors.red, (value - 50) / 50) ??
-          Colors.yellow;
-    }
-  }
-  */
   Color _getZonationColor(double value) {
     double score = (value <= 1.0 && value > 0.0) ? (value * 100) : value;
-
     if (score <= 33.33) {
       return Colors.green; // Kategori 1: Aman
     } else if (score <= 66.66) {
@@ -100,7 +82,6 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
       final Map<String, dynamic> data = json.decode(jsonString);
 
       List<Polygon> borders = [];
-
       for (var feature in data['features']) {
         final properties = feature['properties'];
         final String villageName = (properties['nm_kelurahan'] ?? '')
@@ -126,7 +107,6 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
             for (var coord in poly[0]) {
               double lon = (coord[0] as num).toDouble();
               double lat = (coord[1] as num).toDouble();
-
               points.add(LatLng(lat, lon));
 
               // Kalkulasi Bounding Box Area
@@ -135,7 +115,6 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
               if (lon < _minLon) _minLon = lon;
               if (lon > _maxLon) _maxLon = lon;
             }
-
             // Tambahkan sebagai layer batas desa di peta
             borders.add(
               Polygon(
@@ -153,9 +132,6 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
       setState(() {
         _villageBorders = borders;
       });
-      debugPrint(
-        "Bounding Box Didapat: MinLat:$_minLat, MaxLat:$_maxLat, MinLon:$_minLon, MaxLon:$_maxLon",
-      );
     } catch (e) {
       debugPrint('Gagal memuat GeoJSON: $e');
     }
@@ -167,6 +143,7 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
       final response = await _apiClient.dio.get('/reports/map');
       if (response.statusCode == 200) {
         final List<dynamic> data = response.data['data'] ?? [];
+
         _markers = data.map((report) {
           final lat = double.tryParse(report['latitude'].toString()) ?? 0.0;
           final lng = double.tryParse(report['longitude'].toString()) ?? 0.0;
@@ -177,11 +154,8 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
             width: 40,
             height: 40,
             child: GestureDetector(
-              onTap: () => _showMarkerInfo(
-                report['family_head_name'] ?? 'Warga',
-                'RT ${report['rt']}/RW ${report['rw']}',
-                isPositive,
-              ),
+              onTap: () =>
+                  _showMarkerInfo(report), // Kirim seluruh data laporan
               child: Icon(
                 Icons.location_on,
                 color: isPositive ? Colors.red : Colors.green,
@@ -240,7 +214,6 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
               ) ??
               0.0;
 
-          // Hitung jarak asli antar titik yang dikirim server
           final diffLat = (lat1 - lat2).abs();
           final diffLon = (lon1 - lon2).abs();
 
@@ -250,11 +223,8 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
             actualBoxSize = diffLat;
         }
 
-        // Sedikit dilebihkan (dikalikan 1.05) agar kotak benar-benar menempel
-        // dan tidak ada garis putih tipis karena pembulatan desimal
         final halfRes = (actualBoxSize / 2) * 1.05;
 
-        // Beri tahu jika ternyata API mereturn array kosong
         if (gridData.isEmpty && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -265,7 +235,6 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
         }
 
         for (var point in gridData) {
-          // Fallback pembacaan KEY. Mengantisipasi huruf besar (Lat) atau kecil (lat)
           final lat =
               double.tryParse((point['Lat'] ?? point['lat']).toString()) ?? 0.0;
           final lon =
@@ -279,12 +248,9 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
               ) ??
               0.0;
 
-          // Jika koordinat nyasar ke 0.0, jangan di-render ke peta
           if (lat == 0.0 && lon == 0.0) continue;
 
-          Color gridColor = _getZonationColor(
-            value,
-          ); // Fungsi zonasi (Aman/Rawan/Bahaya)
+          Color gridColor = _getZonationColor(value);
 
           tempPolygons.add(
             Polygon(
@@ -294,9 +260,7 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
                 LatLng(lat + halfRes, lon + halfRes),
                 LatLng(lat + halfRes, lon - halfRes),
               ],
-              color: gridColor.withValues(
-                alpha: 0.5,
-              ), // Pastikan menggunakan dengan Opacity
+              color: gridColor.withValues(alpha: 0.5),
               borderStrokeWidth: 0,
             ),
           );
@@ -308,7 +272,6 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
       }
     } catch (e) {
       debugPrint('Gagal memuat peta IDW: $e');
-      // TAMPILKAN ERROR KE LAYAR agar mudah dilacak
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -323,7 +286,6 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
 
   // Fungsi untuk menembak API prediksi saat peta diklik
   Future<void> _predictPoint(double lat, double lon) async {
-    // Tampilkan loading berputar di tengah layar
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -336,13 +298,13 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
         data: {"lat": lat, "lon": lon},
       );
 
-      // Tutup loading
       if (mounted) Navigator.pop(context);
 
       if (response.statusCode == 200) {
         final data = response.data['data'];
         final status = data['status'].toString();
         double value = double.tryParse(data['value'].toString()) ?? 0.0;
+
         if (value <= 1.0 && value > 0.0) {
           value = value * 100; // Konversi ke skala 100
         }
@@ -464,7 +426,32 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
     });
   }
 
-  void _showMarkerInfo(String name, String rtRw, bool isPositive) {
+  // Fungsi Modifikasi untuk BottomSheet Marker Informasi Real Kader
+  void _showMarkerInfo(Map<String, dynamic> report) {
+    final name = report['family_head_name'] ?? 'Warga';
+    final rtRw = 'RT ${report['rt']} / RW ${report['rw']}';
+    final isPositive = report['larvae_status'] == 1;
+    final lat = double.tryParse(report['latitude'].toString()) ?? 0.0;
+    final lng = double.tryParse(report['longitude'].toString()) ?? 0.0;
+
+    String villageName = '-';
+    if (report['village'] != null && report['village']['name'] != null) {
+      // 1. Coba baca dari relasi objek (seperti di History/Validation)
+      villageName = report['village']['name'].toString();
+    } else if (report['village_name'] != null) {
+      // 2. Fallback: Coba baca dari key flat jika backend mengirimkannya secara langsung
+      villageName = report['village_name'].toString();
+    }
+
+    String dateStr = '-';
+    if (report['inspected_at'] != null) {
+      try {
+        final parsed = DateTime.parse(report['inspected_at']).toLocal();
+        dateStr =
+            "${parsed.day}/${parsed.month}/${parsed.year} ${parsed.hour}:${parsed.minute.toString().padLeft(2, '0')}";
+      } catch (_) {}
+    }
+
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -476,6 +463,7 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Header
             Row(
               children: [
                 Icon(
@@ -486,7 +474,7 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Rumah $name',
+                    name,
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
@@ -496,25 +484,93 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
               ],
             ),
             const Divider(height: 30),
-            Text('Alamat: $rtRw', style: const TextStyle(fontSize: 16)),
+
+            // Detail Data
+            _buildDetailText('Desa', villageName),
+            _buildDetailText('Alamat', rtRw),
+            _buildDetailText('Tanggal Inspeksi', dateStr),
+
             const SizedBox(height: 8),
+
+            // Baris Koordinat & Tombol Salin
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Status Pemeriksaan: ',
-                  style: TextStyle(fontSize: 16),
+                const SizedBox(
+                  width: 130,
+                  child: Text(
+                    'Koordinat',
+                    style: TextStyle(color: Colors.grey, fontSize: 14),
+                  ),
                 ),
-                Text(
-                  isPositive ? 'POSITIF JENTIK' : 'BEBAS JENTIK',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: isPositive ? Colors.red : Colors.green,
+                const Text(': ', style: TextStyle(color: Colors.grey)),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '$lat, $lng',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () {
+                          Clipboard.setData(ClipboardData(text: '$lat, $lng'));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Koordinat disalin ke clipboard!'),
+                              duration: Duration(seconds: 2),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        },
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8.0),
+                          child: Icon(Icons.copy, size: 20, color: Colors.blue),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+
+            // Status Pemeriksaan
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isPositive ? Colors.red[50] : Colors.green[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: isPositive
+                      ? Colors.red.shade200
+                      : Colors.green.shade200,
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text('Status: ', style: TextStyle(fontSize: 16)),
+                  Text(
+                    isPositive ? 'POSITIF JENTIK' : 'BEBAS JENTIK',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: isPositive ? Colors.red : Colors.green,
+                    ),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 24),
+
+            // Tombol Tutup
             SizedBox(
               width: double.infinity,
               height: 45,
@@ -531,7 +587,6 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
         ),
       ),
     ).whenComplete(() {
-      // Akan dipanggil otomatis ketika Bottom Sheet ditutup
       if (mounted) {
         setState(() {
           _tappedMarker = null; // Hapus marker prediksi
@@ -540,11 +595,39 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
     });
   }
 
+  // Widget Bantuan untuk Teks Detail
+  Widget _buildDetailText(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 130,
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.grey, fontSize: 14),
+            ),
+          ),
+          const Text(': ', style: TextStyle(color: Colors.grey)),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: Colors.black87,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Menghitung titik tengah peta secara otomatis berdasarkan Bounding Box
     LatLng mapCenter = LatLng((_minLat + _maxLat) / 2, (_minLon + _maxLon) / 2);
-    // Jika data belum diload, set fallback lokasi Purwokerto
     if (_minLat == 90.0) mapCenter = const LatLng(-7.4245, 109.2302);
 
     return Scaffold(
@@ -562,27 +645,23 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
           : FlutterMap(
               options: MapOptions(
                 initialCenter: mapCenter,
-                initialZoom: 13.0, // Diperkecil sedikit agar 9 desa terlihat
+                initialZoom: 13.0,
                 interactionOptions: const InteractionOptions(
                   flags: InteractiveFlag.all,
                 ),
                 onTap: (tapPosition, point) {
-                  // 1. Munculkan marker biru di titik yang diklik
                   setState(() {
                     _tappedMarker = Marker(
                       point: point,
                       width: 50,
                       height: 50,
                       child: const Icon(
-                        Icons
-                            .location_searching_rounded, // Icon pencarian lokasi
+                        Icons.location_searching_rounded,
                         color: Colors.blueAccent,
                         size: 45,
                       ),
                     );
                   });
-
-                  // 2. Tembak API prediksi
                   _predictPoint(point.latitude, point.longitude);
                 },
               ),
@@ -591,16 +670,12 @@ class _ZonationMapPageState extends State<ZonationMapPage> {
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName: 'com.ipincamp.radar_jentik',
                 ),
-                // 1. Layer IDW Grid
                 PolygonLayer(polygons: _idwPolygons),
-                // 2. Layer Garis Batas 9 Desa (di atas warna IDW)
                 PolygonLayer(polygons: _villageBorders),
-                // 3. Layer Marker
                 MarkerLayer(
                   markers: [
-                    ..._markers, // Tampilkan semua marker riil kader
-                    if (_tappedMarker != null)
-                      _tappedMarker!, // Tampilkan marker prediksi jika ada
+                    ..._markers,
+                    if (_tappedMarker != null) _tappedMarker!,
                   ],
                 ),
               ],
