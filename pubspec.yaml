@@ -33,3 +33,4 @@ flutter:
   assets:
     - assets/33.02_kelurahan.geojson
     - .env
+    - assets/logo.png

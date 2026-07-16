@@ -1,4 +1,4 @@
-import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -50,26 +50,47 @@ class _SplashPageState extends State<SplashPage> {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: Colors.blue,
+    return Scaffold(
+      backgroundColor: const Color(0xFF11234B),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.map_rounded, size: 100, color: Colors.white),
-            SizedBox(height: 20),
-            Text(
+            // Gambar logo
+            Image.asset(
+              'assets/logo.png',
+              width: 150,
+              height: 150,
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) {
+                // Tampilan cadangan jika gambar gagal dimuat
+                return const Icon(
+                  Icons.map_rounded,
+                  size: 100,
+                  color: Colors.white,
+                );
+              },
+            ),
+            const SizedBox(height: 24),
+            // Teks Judul
+            const Text(
               'Radar Jentik',
               style: TextStyle(
                 fontSize: 32,
                 fontWeight: FontWeight.bold,
                 color: Colors.white,
+                letterSpacing: 1.5,
               ),
             ),
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
+            // Teks Subjudul
             Text(
               'Puskesmas Cilongok II',
-              style: TextStyle(fontSize: 16, color: Colors.white70),
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.white.withOpacity(0.7),
+                letterSpacing: 1.0,
+              ),
             ),
           ],
         ),
