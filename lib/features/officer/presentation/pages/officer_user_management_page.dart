@@ -76,43 +76,74 @@ class _OfficerUserManagementPageState extends State<OfficerUserManagementPage> {
     }
 
     try {
-      final response = await _apiClient.dio.get(
-        '/users',
-        // Jika API backend Go Anda mendukung filter by query params,
-        // Anda juga bisa menambahkan 'role': 'cadre' di bawah ini:
-        queryParameters: {'page': _currentPage, 'limit': 15},
-      );
-      if (response.statusCode == 200) {
-        final rawList = response.data['data'] as List<dynamic>? ?? [];
-        final meta = response.data['meta'];
+      debugPrint('--> [REQUEST] Mencoba mengambil data dari /users');
 
-        // --- TAMBAHAN FILTER DI SINI ---
-        // Saring data: pastikan role-nya bukan 'officer'
+      final response = await _apiClient.dio.get(
+        '/users', // Ganti ke '/auth/users' jika endpoint backend Anda menggunakan /auth
+        queryParameters: {'page': _currentPage, 'limit': 20},
+      );
+
+      debugPrint(
+        '<-- [RESPONSE] Berhasil menerima data. Status: ${response.statusCode}',
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = response.data;
+
+        // 1. Ambil data mentah dari JSON
+        final rawList = responseData['data'] != null
+            ? List<dynamic>.from(responseData['data'])
+            : [];
+        final meta = responseData['meta'];
+
+        // 2. FILTER: Buang semua data yang role-nya 'officer'
         final filteredData = rawList.where((user) {
+          if (user is! Map) return false;
           final role = user['role']?.toString().toLowerCase() ?? '';
-          return role != 'officer'; // Hanya ambil yang bukan officer
+          return role != 'officer';
         }).toList();
 
-        setState(() {
-          _cadres.addAll(filteredData);
-          _isLoading = false;
-          if (meta != null) {
-            _hasMoreData = _currentPage < (meta['total_pages'] ?? 1);
-          } else {
-            _hasMoreData = false;
-          }
-        });
+        // 3. Masukkan ke dalam State UI
+        if (mounted) {
+          setState(() {
+            _cadres.addAll(filteredData); // Masukkan data yang sudah difilter
+
+            // Pengecekan paginasi HARUS menggunakan meta dari backend
+            if (meta != null && meta['total_pages'] != null) {
+              final totalPages =
+                  int.tryParse(meta['total_pages'].toString()) ?? 1;
+              _hasMoreData = _currentPage < totalPages;
+            } else {
+              // Fallback jika tidak ada meta: gunakan panjang rawList
+              _hasMoreData = rawList.length == 15;
+            }
+          });
+        }
       }
-    } on DioException catch (e) {
+    } catch (e, stacktrace) {
+      // TAMPILKAN ERROR DETAIL KE CONSOLE
+      debugPrint('--- [ERROR FETCH CADRES] ---');
+      debugPrint(e.toString());
+      debugPrint(stacktrace.toString());
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.message ?? 'Gagal memuat data kader'),
+            content: Text('Gagal memuat data: ${e.toString().split('\n')[0]}'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
           ),
         );
       }
-      setState(() => _isLoading = false);
+    } finally {
+      // 4. BLOK INI WAJIB MENGHENTIKAN LOADING (Baik sukses maupun error)
+      debugPrint('--> [FINALLY] Mematikan animasi loading');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isFetchingMore = false;
+        });
+      }
     }
   }
 
@@ -122,33 +153,37 @@ class _OfficerUserManagementPageState extends State<OfficerUserManagementPage> {
 
     try {
       final response = await _apiClient.dio.get(
-        '/auth/users',
+        '/users', // PERBAIKAN: Ubah dari '/auth/users' menjadi '/users'
         queryParameters: {'page': _currentPage, 'limit': 15},
       );
-      if (response.statusCode == 200) {
-        final rawList = response.data['data'] as List<dynamic>? ?? [];
-        final meta = response.data['meta'];
 
-        // --- TAMBAHAN FILTER DI SINI ---
-        // Saring data: pastikan role-nya bukan 'officer'
+      if (response.statusCode == 200) {
+        final responseData = response.data;
+        final rawList = (responseData['data'] as List<dynamic>?) ?? [];
+        final meta = responseData['meta'];
+
         final filteredData = rawList.where((user) {
           final role = user['role']?.toString().toLowerCase() ?? '';
-          return role != 'officer'; // Hanya ambil yang bukan officer
+          return role != 'officer';
         }).toList();
 
-        setState(() {
-          _cadres.addAll(filteredData);
-          if (meta != null) {
-            _hasMoreData = _currentPage < (meta['total_pages'] ?? 1);
-          } else {
-            _hasMoreData = false;
-          }
-        });
+        if (mounted) {
+          setState(() {
+            _cadres.addAll(filteredData);
+            if (meta != null) {
+              _hasMoreData = _currentPage < (meta['total_pages'] ?? 1);
+            } else {
+              _hasMoreData = rawList.length == 15;
+            }
+          });
+        }
       }
     } catch (e) {
-      _currentPage--;
+      _currentPage--; // Mundurkan page jika gagal
     } finally {
-      setState(() => _isFetchingMore = false);
+      if (mounted) {
+        setState(() => _isFetchingMore = false);
+      }
     }
   }
 
