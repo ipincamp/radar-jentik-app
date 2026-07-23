@@ -222,7 +222,7 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
                           MaterialPageRoute(
                             builder: (_) => CadreReportDetailPage(
                               reportData: report,
-                              isOffline: false, // Karena ini dari API Riwayat
+                              isOffline: false,
                             ),
                           ),
                         );
@@ -305,6 +305,41 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
                                 ),
                               ],
                             ),
+                            // TOMBOL EDIT LAPORAN
+                            if (valStatus.toLowerCase() != 'accept') ...[
+                              const SizedBox(height: 12),
+                              const Divider(height: 1),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  TextButton.icon(
+                                    onPressed: () {
+                                      // TODO: Navigasikan ke halaman form untuk Mode Edit
+                                      // Saat ini EntryFormPage belum mendukung passing data edit,
+                                      // jadi tampilkan SnackBar dulu buat sementara.
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'Fitur edit form akan segera tersedia.',
+                                          ),
+                                          backgroundColor: Colors.blue,
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(
+                                      Icons.edit_rounded,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Edit Laporan'),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: Colors.blue,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ],
                         ),
                       ),
