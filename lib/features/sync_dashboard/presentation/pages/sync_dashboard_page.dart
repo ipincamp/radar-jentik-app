@@ -69,48 +69,44 @@ class _SyncDashboardPageState extends State<SyncDashboardPage> {
     // 2. Loop semua data di SQLite (FORWARD)
     for (var report in _pendingReports) {
       int id = report['id'];
-      String localImagePath = report['local_image_path'];
+      String localImagePath = report['local_image_path'] ?? '';
       String payloadJson = report['payload_json'];
 
       try {
-        // Cek apakah file foto masih ada di HP
-        File imageFile = File(localImagePath);
-        if (!imageFile.existsSync()) {
-          _failCount++;
-          continue;
+        Map<String, dynamic> payload = jsonDecode(payloadJson);
+
+        // A. Upload Foto JIKA file exist dan path tidak kosong
+        if (localImagePath.isNotEmpty) {
+          File imageFile = File(localImagePath);
+          if (imageFile.existsSync()) {
+            String fileName = localImagePath.split('/').last;
+            FormData formData = FormData.fromMap({
+              "photo": await MultipartFile.fromFile(
+                localImagePath,
+                filename: fileName,
+              ),
+            });
+
+            final uploadRes = await _apiClient.dio.post(
+              '/uploads',
+              data: formData,
+            );
+            if (uploadRes.statusCode == 200 || uploadRes.statusCode == 201) {
+              String photoUrl = uploadRes.data['data']['photo_url'];
+              payload["photo_url"] = photoUrl;
+            }
+          }
         }
 
-        // A. Upload Foto
-        String fileName = localImagePath.split('/').last;
-        FormData formData = FormData.fromMap({
-          "photo": await MultipartFile.fromFile(
-            localImagePath,
-            filename: fileName,
-          ),
-        });
+        // B. Kirim Laporan ke Backend (Dengan/Tanpa Foto)
+        final reportRes = await _apiClient.dio.post('/reports', data: payload);
 
-        final uploadRes = await _apiClient.dio.post('/uploads', data: formData);
-
-        if (uploadRes.statusCode == 200 || uploadRes.statusCode == 201) {
-          String photoUrl = uploadRes.data['data']['photo_url'];
-
-          // B. Decode JSON lokal & masukkan photo_url
-          Map<String, dynamic> payload = jsonDecode(payloadJson);
-          payload["photo_url"] = photoUrl;
-
-          // C. Kirim ke Backend
-          final reportRes = await _apiClient.dio.post(
-            '/reports',
-            data: payload,
-          );
-
-          if (reportRes.statusCode == 201) {
-            // D. Jika Berhasil, hapus dari database lokal
-            await DatabaseHelper.instance.deletePendingReport(id);
-            _successCount++;
-          } else {
-            _failCount++;
-          }
+        if (reportRes.statusCode == 201 || reportRes.statusCode == 200) {
+          // C. Jika Berhasil, hapus dari database lokal
+          await DatabaseHelper.instance.deletePendingReport(id);
+          _successCount++;
+        } else {
+          _failCount++;
         }
       } catch (e) {
         _failCount++;

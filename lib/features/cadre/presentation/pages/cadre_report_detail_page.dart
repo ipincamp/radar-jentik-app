@@ -251,23 +251,33 @@ class CadreReportDetailPage extends StatelessWidget {
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
                 onPressed: () {
-                  if (isOffline && localImagePath != null) {
+                  // Cek untuk laporan Offline
+                  if (isOffline &&
+                      localImagePath != null &&
+                      localImagePath!.isNotEmpty) {
                     _showPhotoDialog(
                       context,
                       isLocal: true,
                       path: localImagePath!,
                     );
-                  } else if (reportData['photo_url'] != null &&
+                  }
+                  // Cek untuk laporan Online
+                  else if (!isOffline &&
+                      reportData['photo_url'] != null &&
                       reportData['photo_url'].toString().isNotEmpty) {
                     _showPhotoDialog(
                       context,
                       isLocal: false,
                       path: reportData['photo_url'],
                     );
-                  } else {
+                  }
+                  // Jika tidak ada foto
+                  else {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Tidak ada foto terlampir'),
+                        content: Text(
+                          'Tidak ada foto terlampir pada laporan ini',
+                        ),
                         backgroundColor: Colors.orange,
                       ),
                     );

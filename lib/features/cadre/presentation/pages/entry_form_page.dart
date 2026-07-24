@@ -270,12 +270,15 @@ class _EntryFormPageState extends State<EntryFormPage> {
       return;
     }
 
+    /*
+    JADI OPSIONAL R22072026
     if (_imageFile == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Wajib mengunggah foto bukti')),
       );
       return;
     }
+    */
 
     setState(() => _isLoading = true);
 
@@ -317,15 +320,18 @@ class _EntryFormPageState extends State<EntryFormPage> {
       bool hasInternet = !isOffline;
 
       if (hasInternet) {
-        String? uploadedPhotoUrl = await _uploadPhoto();
-        if (uploadedPhotoUrl == null) {
-          throw Exception("Gagal mendapatkan link foto dari server.");
+        // Jika sedang online dan foto ADA, maka upload
+        if (_imageFile != null) {
+          String? uploadedPhotoUrl = await _uploadPhoto();
+          if (uploadedPhotoUrl != null) {
+            payload["photo_url"] = uploadedPhotoUrl;
+          } else {
+            throw Exception("Gagal mengunggah foto ke server.");
+          }
         }
 
-        payload["photo_url"] = uploadedPhotoUrl;
         final response = await _apiClient.dio.post('/reports', data: payload);
-
-        if (response.statusCode == 201) {
+        if (response.statusCode == 201 || response.statusCode == 200) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -339,7 +345,8 @@ class _EntryFormPageState extends State<EntryFormPage> {
       } else {
         String payloadJson = jsonEncode(payload);
         await DatabaseHelper.instance.insertPendingReport(
-          localImagePath: _imageFile!.path,
+          // Jika foto kosong, berikan string kosong ('') agar tidak null
+          localImagePath: _imageFile?.path ?? '',
           payloadJson: payloadJson,
         );
 
@@ -697,7 +704,7 @@ class _EntryFormPageState extends State<EntryFormPage> {
             ExpansionTile(
               initiallyExpanded: true,
               title: const Text(
-                'Foto Bukti Inspeksi',
+                'Foto Bukti Inspeksi (Opsional)',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               leading: const Icon(Icons.camera_alt, color: Colors.blue),
@@ -744,7 +751,7 @@ class _EntryFormPageState extends State<EntryFormPage> {
                               ),
                               SizedBox(height: 4),
                               Text(
-                                "Wajib melampirkan 1 foto",
+                                "Opsional (Tidak Wajib)",
                                 style: TextStyle(
                                   color: Colors.grey,
                                   fontSize: 12,
