@@ -53,6 +53,9 @@ class _EntryFormPageState extends State<EntryFormPage> {
   final _latController = TextEditingController();
   final _lngController = TextEditingController();
 
+  DateTime _selectedDateTime = DateTime.now();
+  final _dateTimeController = TextEditingController();
+
   List<dynamic> _villages = [];
   String? _selectedVillageId;
   bool _isLoadingVillages = true;
@@ -71,6 +74,8 @@ class _EntryFormPageState extends State<EntryFormPage> {
     super.initState();
     _fetchVillages();
     _fetchContainerTypes();
+    // Set default ke waktu sekarang saat form dibuka
+    _dateTimeController.text = _formatDateTime(_selectedDateTime);
   }
 
   @override
@@ -80,10 +85,48 @@ class _EntryFormPageState extends State<EntryFormPage> {
     _headNameController.dispose();
     _latController.dispose();
     _lngController.dispose();
+    _dateTimeController.dispose();
     for (var c in _addedContainers) {
       c.dispose();
     }
     super.dispose();
+  }
+
+  // --- FUNGSI FORMAT TANGGAL ---
+  String _formatDateTime(DateTime dt) {
+    return "${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
+  }
+
+  // --- FUNGSI POPUP PILIH TANGGAL & WAKTU ---
+  Future<void> _pickDateTime() async {
+    final DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _selectedDateTime,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(), // Mencegah pilih tanggal di masa depan
+    );
+
+    if (pickedDate != null) {
+      if (mounted) {
+        final TimeOfDay? pickedTime = await showTimePicker(
+          context: context,
+          initialTime: TimeOfDay.fromDateTime(_selectedDateTime),
+        );
+
+        if (pickedTime != null) {
+          setState(() {
+            _selectedDateTime = DateTime(
+              pickedDate.year,
+              pickedDate.month,
+              pickedDate.day,
+              pickedTime.hour,
+              pickedTime.minute,
+            );
+            _dateTimeController.text = _formatDateTime(_selectedDateTime);
+          });
+        }
+      }
+    }
   }
 
   // ==========================================
@@ -263,7 +306,7 @@ class _EntryFormPageState extends State<EntryFormPage> {
         "family_head_name": _headNameController.text.trim(),
         "latitude": double.tryParse(_latController.text) ?? 0.0,
         "longitude": double.tryParse(_lngController.text) ?? 0.0,
-        "inspected_at": DateTime.now().toIso8601String(),
+        "inspected_at": _selectedDateTime.toIso8601String(),
         "containers": containerList,
       };
 
@@ -490,6 +533,27 @@ class _EntryFormPageState extends State<EntryFormPage> {
                     ),
                   ),
                   validator: (v) => v!.isEmpty ? 'Wajib' : null,
+                ),
+                const SizedBox(height: 12),
+
+                // FIELD TANGGAL & WAKTU
+                TextFormField(
+                  controller: _dateTimeController,
+                  readOnly: true, // Tidak bisa diketik manual
+                  onTap: _pickDateTime, // Buka kalender saat diklik
+                  decoration: const InputDecoration(
+                    labelText: 'Waktu Survei / Inspeksi',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(
+                      Icons.calendar_month_rounded,
+                      color: Colors.blue,
+                    ),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                  ),
+                  validator: (v) => v!.isEmpty ? 'Wajib diisi' : null,
                 ),
                 const SizedBox(height: 16),
 
