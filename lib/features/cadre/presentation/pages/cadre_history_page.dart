@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../../../../core/network/api_client.dart';
@@ -13,6 +14,10 @@ class CadreHistoryPage extends StatefulWidget {
 class _CadreHistoryPageState extends State<CadreHistoryPage> {
   final _apiClient = ApiClient();
   final ScrollController _scrollController = ScrollController();
+
+  final TextEditingController _searchController = TextEditingController();
+  Timer? _debounce;
+  String _searchQuery = '';
 
   List<dynamic> _reports = [];
   bool _isLoading = true;
@@ -39,6 +44,8 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
 
   @override
   void dispose() {
+    _searchController.dispose();
+    _debounce?.cancel();
     _scrollController.dispose();
     super.dispose();
   }
@@ -57,7 +64,11 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
     try {
       final response = await _apiClient.dio.get(
         '/reports/history',
-        queryParameters: {'page': _currentPage, 'limit': 10},
+        queryParameters: {
+          'page': _currentPage,
+          'limit': 10,
+          if (_searchQuery.isNotEmpty) 'search': _searchQuery,
+        },
       );
 
       if (response.statusCode == 200) {
@@ -92,7 +103,11 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
     try {
       final response = await _apiClient.dio.get(
         '/reports/history',
-        queryParameters: {'page': _currentPage, 'limit': 10},
+        queryParameters: {
+          'page': _currentPage,
+          'limit': 10,
+          if (_searchQuery.isNotEmpty) 'search': _searchQuery,
+        },
       );
 
       if (response.statusCode == 200) {
@@ -113,6 +128,18 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
     } finally {
       setState(() => _isFetchingMore = false);
     }
+  }
+
+  void _onSearchChanged(String query) {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      setState(() {
+        _searchQuery = query;
+      });
+      _fetchHistory(
+        refresh: true,
+      ); // Panggil ulang data dari awal setiap kali search
+    });
   }
 
   Color _getStatusColor(String status) {
@@ -149,204 +176,252 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       backgroundColor: Colors.grey[100],
-      body: RefreshIndicator(
-        onRefresh: () => _fetchHistory(refresh: true),
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : _reports.isEmpty
-            ? ListView(
-                // ListView kosong agar RefreshIndicator tetap berfungsi
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: [
-                  SizedBox(height: MediaQuery.of(context).size.height * 0.4),
-                  const Center(
-                    child: Text(
-                      'Belum ada riwayat laporan.',
-                      style: TextStyle(color: Colors.grey, fontSize: 16),
-                    ),
-                  ),
-                ],
-              )
-            : ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.all(16),
-                physics: const AlwaysScrollableScrollPhysics(),
-                itemCount: _reports.length + (_hasMoreData ? 1 : 0),
-                itemBuilder: (context, index) {
-                  // Jika mencapai indeks terakhir dan masih ada data, tampilkan loading kecil
-                  if (index == _reports.length) {
-                    return const Padding(
-                      padding: EdgeInsets.all(16.0),
-                      child: Center(child: CircularProgressIndicator()),
-                    );
-                  }
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Cari Nama KK atau Tanggal...',
+                prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, color: Colors.grey),
+                        onPressed: () {
+                          _searchController.clear();
+                          _onSearchChanged('');
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Colors.blue),
+                ),
+              ),
+              onChanged: _onSearchChanged,
+            ),
+          ),
 
-                  final report = _reports[index];
-                  final headName =
-                      report['family_head_name'] ?? 'Tidak Diketahui';
-
-                  // Mengambil nama desa dari relasi object Village
-                  final villageName = report['village'] != null
-                      ? report['village']['name']
-                      : '-';
-                  final rtRw =
-                      'RT ${report['rt']}/RW ${report['rw']} - Desa $villageName';
-
-                  final isPositive = report['larvae_status'] == 1;
-                  final valStatus = report['validation_status'] ?? 'pending';
-                  // final rejectionReason = report['rejection_reason'];
-
-                  // Parsing Format Tanggal API (ISO 8601)
-                  String dateStr = '-';
-                  if (report['inspected_at'] != null) {
-                    try {
-                      final parsedDate = DateTime.parse(
-                        report['inspected_at'],
-                      ).toLocal();
-                      dateStr =
-                          "${parsedDate.day}/${parsedDate.month}/${parsedDate.year} ${parsedDate.hour}:${parsedDate.minute.toString().padLeft(2, '0')}";
-                    } catch (_) {}
-                  }
-
-                  return Card(
-                    elevation: 2,
-                    margin: const EdgeInsets.only(bottom: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(12),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => CadreReportDetailPage(
-                              reportData: report,
-                              isOffline: false,
-                            ),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () => _fetchHistory(refresh: true),
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _reports.isEmpty
+                  ? ListView(
+                      // ListView kosong agar RefreshIndicator tetap berfungsi
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [
+                        SizedBox(
+                          height: MediaQuery.of(context).size.height * 0.4,
+                        ),
+                        const Center(
+                          child: Text(
+                            'Belum ada riwayat laporan.',
+                            style: TextStyle(color: Colors.grey, fontSize: 16),
                           ),
-                        );
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: isPositive
-                                        ? Colors.red[50]
-                                        : Colors.green[50],
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(
-                                    isPositive
-                                        ? Icons.bug_report
-                                        : Icons.health_and_safety,
-                                    color: isPositive
-                                        ? Colors.red
-                                        : Colors.green,
-                                    size: 24,
+                        ),
+                      ],
+                    )
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.all(16),
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      itemCount: _reports.length + (_hasMoreData ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        // Jika mencapai indeks terakhir dan masih ada data, tampilkan loading kecil
+                        if (index == _reports.length) {
+                          return const Padding(
+                            padding: EdgeInsets.all(16.0),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
+
+                        final report = _reports[index];
+                        final headName =
+                            report['family_head_name'] ?? 'Tidak Diketahui';
+
+                        // Mengambil nama desa dari relasi object Village
+                        final villageName = report['village'] != null
+                            ? report['village']['name']
+                            : '-';
+                        final rtRw =
+                            'RT ${report['rt']}/RW ${report['rw']} - Desa $villageName';
+
+                        final isPositive = report['larvae_status'] == 1;
+                        final valStatus =
+                            report['validation_status'] ?? 'pending';
+                        // final rejectionReason = report['rejection_reason'];
+
+                        // Parsing Format Tanggal API (ISO 8601)
+                        String dateStr = '-';
+                        if (report['inspected_at'] != null) {
+                          try {
+                            final parsedDate = DateTime.parse(
+                              report['inspected_at'],
+                            ).toLocal();
+                            dateStr =
+                                "${parsedDate.day}/${parsedDate.month}/${parsedDate.year} ${parsedDate.hour}:${parsedDate.minute.toString().padLeft(2, '0')}";
+                          } catch (_) {}
+                        }
+
+                        return Card(
+                          elevation: 2,
+                          margin: const EdgeInsets.only(bottom: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => CadreReportDetailPage(
+                                    reportData: report,
+                                    isOffline: false,
                                   ),
                                 ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
+                              );
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        headName,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16,
+                                      Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          color: isPositive
+                                              ? Colors.red[50]
+                                              : Colors.green[50],
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Icon(
+                                          isPositive
+                                              ? Icons.bug_report
+                                              : Icons.health_and_safety,
+                                          color: isPositive
+                                              ? Colors.red
+                                              : Colors.green,
+                                          size: 24,
                                         ),
                                       ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        rtRw,
-                                        style: TextStyle(
-                                          color: Colors.grey[700],
-                                          fontSize: 13,
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              headName,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 16,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              rtRw,
+                                              style: TextStyle(
+                                                color: Colors.grey[700],
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              dateStr,
+                                              style: const TextStyle(
+                                                color: Colors.grey,
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        dateStr,
-                                        style: const TextStyle(
-                                          color: Colors.grey,
-                                          fontSize: 12,
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: _getStatusColor(valStatus),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          _getStatusLabel(valStatus),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
                                       ),
                                     ],
                                   ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: _getStatusColor(valStatus),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    _getStatusLabel(valStatus),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            // TOMBOL EDIT LAPORAN
-                            if (valStatus.toLowerCase() != 'accept') ...[
-                              const SizedBox(height: 12),
-                              const Divider(height: 1),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  TextButton.icon(
-                                    onPressed: () {
-                                      // TODO: Navigasikan ke halaman form untuk Mode Edit
-                                      // Saat ini EntryFormPage belum mendukung passing data edit,
-                                      // jadi tampilkan SnackBar dulu buat sementara.
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            'Fitur edit form akan segera tersedia.',
+                                  // TOMBOL EDIT LAPORAN
+                                  if (valStatus.toLowerCase() != 'accept') ...[
+                                    const SizedBox(height: 12),
+                                    const Divider(height: 1),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: [
+                                        TextButton.icon(
+                                          onPressed: () {
+                                            // TODO: Navigasikan ke halaman form untuk Mode Edit
+                                            // Saat ini EntryFormPage belum mendukung passing data edit,
+                                            // jadi tampilkan SnackBar dulu buat sementara.
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                  'Fitur edit form akan segera tersedia.',
+                                                ),
+                                                backgroundColor: Colors.blue,
+                                              ),
+                                            );
+                                          },
+                                          icon: const Icon(
+                                            Icons.edit_rounded,
+                                            size: 18,
                                           ),
-                                          backgroundColor: Colors.blue,
+                                          label: const Text('Edit Laporan'),
+                                          style: TextButton.styleFrom(
+                                            foregroundColor: Colors.blue,
+                                          ),
                                         ),
-                                      );
-                                    },
-                                    icon: const Icon(
-                                      Icons.edit_rounded,
-                                      size: 18,
+                                      ],
                                     ),
-                                    label: const Text('Edit Laporan'),
-                                    style: TextButton.styleFrom(
-                                      foregroundColor: Colors.blue,
-                                    ),
-                                  ),
+                                  ],
                                 ],
                               ),
-                            ],
-                          ],
-                        ),
-                      ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
+            ),
+          ),
+        ],
       ),
     );
   }
