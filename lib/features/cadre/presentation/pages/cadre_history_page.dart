@@ -26,6 +26,13 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
   int _currentPage = 1;
   bool _hasMoreData = true;
 
+  bool _showFilters = false;
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _dateController = TextEditingController();
+  final TextEditingController _rtController = TextEditingController();
+  final TextEditingController _rwController = TextEditingController();
+  DateTime? _selectedDate;
+
   @override
   void initState() {
     super.initState();
@@ -44,10 +51,39 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _nameController.dispose();
+    _dateController.dispose();
+    _rtController.dispose();
+    _rwController.dispose();
     _debounce?.cancel();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  // --- FUNGSI PILIH TANGGAL ---
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null && picked != _selectedDate) {
+      setState(() {
+        _selectedDate = picked;
+        // Format YYYY-MM-DD
+        _dateController.text =
+            "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
+      });
+    }
+  }
+
+  // --- FUNGSI AUTO-SEARCH SAAT KETIK NAMA (OPSIONAL) ---
+  void _onNameChanged(String query) {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 600), () {
+      _fetchHistory(refresh: true);
+    });
   }
 
   // Fungsi Fetch Pertama Kali / Refresh
@@ -64,17 +100,13 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
     try {
       final response = await _apiClient.dio.get(
         '/reports/history',
-        queryParameters: {
-          'page': _currentPage,
-          'limit': 10,
-          if (_searchQuery.isNotEmpty) 'search': _searchQuery,
-        },
+        queryParameters:
+            _buildQueryParameters(), // Gunakan helper pembentuk parameter
       );
 
       if (response.statusCode == 200) {
         final data = response.data['data'] as List<dynamic>? ?? [];
-        final meta = response.data['meta']; // Mengambil metadata pagination
-
+        final meta = response.data['meta'];
         setState(() {
           _reports.addAll(data);
           _isLoading = false;
@@ -99,21 +131,15 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
   Future<void> _fetchMoreHistory() async {
     setState(() => _isFetchingMore = true);
     _currentPage++;
-
     try {
       final response = await _apiClient.dio.get(
         '/reports/history',
-        queryParameters: {
-          'page': _currentPage,
-          'limit': 10,
-          if (_searchQuery.isNotEmpty) 'search': _searchQuery,
-        },
+        queryParameters: _buildQueryParameters(),
       );
 
       if (response.statusCode == 200) {
         final data = response.data['data'] as List<dynamic>? ?? [];
         final meta = response.data['meta'];
-
         setState(() {
           _reports.addAll(data);
           if (meta != null) {
@@ -124,10 +150,29 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
         });
       }
     } catch (e) {
-      _currentPage--; // Kembalikan halaman jika gagal
+      _currentPage--;
     } finally {
       setState(() => _isFetchingMore = false);
     }
+  }
+
+  // --- HELPER UNTUK MENGUMPULKAN PARAMETER PENCARIAN ---
+  Map<String, dynamic> _buildQueryParameters() {
+    final params = <String, dynamic>{'page': _currentPage, 'limit': 10};
+    if (_nameController.text.trim().isNotEmpty) {
+      params['search'] = _nameController.text
+          .trim(); // atau sesuaikan key API (misal: 'name')
+    }
+    if (_dateController.text.isNotEmpty) {
+      params['date'] = _dateController.text;
+    }
+    if (_rtController.text.trim().isNotEmpty) {
+      params['rt'] = _rtController.text.trim();
+    }
+    if (_rwController.text.trim().isNotEmpty) {
+      params['rw'] = _rwController.text.trim();
+    }
+    return params;
   }
 
   void _onSearchChanged(String query) {
@@ -178,42 +223,171 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
       backgroundColor: Colors.grey[100],
       body: Column(
         children: [
-          Padding(
+          // BAGIAN SEARCH & FILTER
+          Container(
+            color: Colors.white,
             padding: const EdgeInsets.all(16.0),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Cari Nama KK atau Tanggal...',
-                prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, color: Colors.grey),
+            child: Column(
+              children: [
+                // BARIS 1: Cari Nama & Tombol Filter
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 48,
+                        child: TextField(
+                          controller: _nameController,
+                          onChanged: _onNameChanged,
+                          decoration: const InputDecoration(
+                            hintText: 'Cari nama',
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 12,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      height: 48,
+                      child: OutlinedButton(
                         onPressed: () {
-                          _searchController.clear();
-                          _onSearchChanged('');
+                          setState(() {
+                            _showFilters = !_showFilters;
+                          });
                         },
-                      )
-                    : null,
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          side: const BorderSide(color: Colors.black87),
+                        ),
+                        child: const Text(
+                          'Filter',
+                          style: TextStyle(color: Colors.black87, fontSize: 16),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Colors.blue),
-                ),
-              ),
-              onChanged: _onSearchChanged,
+
+                // BARIS 2: Filter Lanjutan (Tanggal, RT, RW, Cari)
+                if (_showFilters) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      // Field Tanggal
+                      Expanded(
+                        flex: 4,
+                        child: SizedBox(
+                          height: 48,
+                          child: TextField(
+                            controller: _dateController,
+                            readOnly: true,
+                            onTap: () => _selectDate(context),
+                            decoration: InputDecoration(
+                              hintText: 'Tanggal',
+                              border: const OutlineInputBorder(),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
+                              suffixIcon: _dateController.text.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(Icons.close, size: 16),
+                                      onPressed: () {
+                                        setState(() {
+                                          _dateController.clear();
+                                          _selectedDate = null;
+                                        });
+                                      },
+                                    )
+                                  : null,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Field RT
+                      Expanded(
+                        flex: 2,
+                        child: SizedBox(
+                          height: 48,
+                          child: TextField(
+                            controller: _rtController,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              hintText: 'RT',
+                              border: OutlineInputBorder(),
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Field RW
+                      Expanded(
+                        flex: 2,
+                        child: SizedBox(
+                          height: 48,
+                          child: TextField(
+                            controller: _rwController,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              hintText: 'RW',
+                              border: OutlineInputBorder(),
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Tombol Cari (Border Biru)
+                      Expanded(
+                        flex: 3,
+                        child: SizedBox(
+                          height: 48,
+                          child: OutlinedButton(
+                            onPressed: () {
+                              FocusScope.of(
+                                context,
+                              ).unfocus(); // Tutup keyboard
+                              _fetchHistory(
+                                refresh: true,
+                              ); // Eksekusi pencarian
+                            },
+                            style: OutlinedButton.styleFrom(
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              side: const BorderSide(
+                                color: Colors.blue,
+                                width: 2,
+                              ),
+                            ),
+                            child: const Text(
+                              'Cari',
+                              style: TextStyle(
+                                color: Colors.blue,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
             ),
           ),
 
+          // AREA LIST RIWAYAT LAPORAN
           Expanded(
             child: RefreshIndicator(
               onRefresh: () => _fetchHistory(refresh: true),
