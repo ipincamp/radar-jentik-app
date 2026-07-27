@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
+
 import '../../../../core/network/api_client.dart';
 import 'cadre_report_detail_page.dart';
 import 'edit_form_page.dart';
@@ -16,27 +17,30 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
   final _apiClient = ApiClient();
   final ScrollController _scrollController = ScrollController();
 
-  final TextEditingController _searchController = TextEditingController();
   Timer? _debounce;
-  String _searchQuery = '';
-
   List<dynamic> _reports = [];
   bool _isLoading = true;
   bool _isFetchingMore = false;
-
   int _currentPage = 1;
   bool _hasMoreData = true;
-
   bool _showFilters = false;
+
+  // STATE UNTUK FILTER
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _dateController = TextEditingController();
   final TextEditingController _rtController = TextEditingController();
   final TextEditingController _rwController = TextEditingController();
   DateTime? _selectedDate;
 
+  // STATE UNTUK DROPDOWN DESA
+  List<dynamic> _villages = [];
+  String? _selectedVillageId;
+  bool _isLoadingVillages = true;
+
   @override
   void initState() {
     super.initState();
+    _fetchVillages(); // Ambil master data desa saat halaman dibuka
     _fetchHistory(refresh: true);
 
     // Dengarkan event scroll untuk memicu pagination (infinite scroll)
@@ -61,7 +65,24 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
     super.dispose();
   }
 
-  // --- FUNGSI PILIH TANGGAL ---
+  // FUNGSI AMBIL DATA DESA UNTUK DROPDOWN
+  Future<void> _fetchVillages() async {
+    try {
+      final response = await _apiClient.dio.get('/villages');
+      if (response.statusCode == 200) {
+        if (mounted) {
+          setState(() {
+            _villages = response.data['data'] ?? [];
+            _isLoadingVillages = false;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoadingVillages = false);
+    }
+  }
+
+  // FUNGSI PILIH TANGGAL
   Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -76,15 +97,39 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
         _dateController.text =
             "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
       });
+      _fetchHistory(refresh: true); // Otomatis cari saat tanggal diubah
     }
   }
 
-  // --- FUNGSI AUTO-SEARCH SAAT KETIK NAMA (OPSIONAL) ---
+  // FUNGSI AUTO-SEARCH SAAT KETIK NAMA
   void _onNameChanged(String query) {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     _debounce = Timer(const Duration(milliseconds: 600), () {
       _fetchHistory(refresh: true);
     });
+  }
+
+  // HELPER UNTUK MENGUMPULKAN PARAMETER PENCARIAN
+  Map<String, dynamic> _buildQueryParameters() {
+    final params = <String, dynamic>{'page': _currentPage, 'limit': 10};
+
+    if (_nameController.text.trim().isNotEmpty) {
+      params['search'] = _nameController.text.trim();
+    }
+    if (_dateController.text.isNotEmpty) {
+      params['date'] = _dateController.text;
+    }
+    if (_rtController.text.trim().isNotEmpty) {
+      params['rt'] = _rtController.text.trim();
+    }
+    if (_rwController.text.trim().isNotEmpty) {
+      params['rw'] = _rwController.text.trim();
+    }
+    if (_selectedVillageId != null && _selectedVillageId!.isNotEmpty) {
+      params['village_id'] = _selectedVillageId;
+    }
+
+    return params;
   }
 
   // Fungsi Fetch Pertama Kali / Refresh
@@ -101,30 +146,35 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
     try {
       final response = await _apiClient.dio.get(
         '/reports/history',
-        queryParameters:
-            _buildQueryParameters(), // Gunakan helper pembentuk parameter
+        queryParameters: _buildQueryParameters(), // Bawa filter ke API
       );
 
       if (response.statusCode == 200) {
         final data = response.data['data'] as List<dynamic>? ?? [];
         final meta = response.data['meta'];
-        setState(() {
-          _reports.addAll(data);
-          _isLoading = false;
-          if (meta != null) {
-            _hasMoreData = _currentPage < (meta['total_pages'] ?? 1);
-          } else {
-            _hasMoreData = false;
-          }
-        });
+
+        if (mounted) {
+          setState(() {
+            _reports.addAll(data);
+            _isLoading = false;
+            if (meta != null) {
+              _hasMoreData = _currentPage < (meta['total_pages'] ?? 1);
+            } else {
+              _hasMoreData = false;
+            }
+          });
+        }
       }
     } on DioException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message ?? 'Gagal mengambil riwayat')),
+          SnackBar(
+            content: Text(e.message ?? 'Gagal mengambil riwayat'),
+            backgroundColor: Colors.red,
+          ),
         );
+        setState(() => _isLoading = false);
       }
-      setState(() => _isLoading = false);
     }
   }
 
@@ -132,6 +182,7 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
   Future<void> _fetchMoreHistory() async {
     setState(() => _isFetchingMore = true);
     _currentPage++;
+
     try {
       final response = await _apiClient.dio.get(
         '/reports/history',
@@ -141,51 +192,23 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
       if (response.statusCode == 200) {
         final data = response.data['data'] as List<dynamic>? ?? [];
         final meta = response.data['meta'];
-        setState(() {
-          _reports.addAll(data);
-          if (meta != null) {
-            _hasMoreData = _currentPage < (meta['total_pages'] ?? 1);
-          } else {
-            _hasMoreData = false;
-          }
-        });
+
+        if (mounted) {
+          setState(() {
+            _reports.addAll(data);
+            if (meta != null) {
+              _hasMoreData = _currentPage < (meta['total_pages'] ?? 1);
+            } else {
+              _hasMoreData = false;
+            }
+          });
+        }
       }
     } catch (e) {
       _currentPage--;
     } finally {
-      setState(() => _isFetchingMore = false);
+      if (mounted) setState(() => _isFetchingMore = false);
     }
-  }
-
-  // --- HELPER UNTUK MENGUMPULKAN PARAMETER PENCARIAN ---
-  Map<String, dynamic> _buildQueryParameters() {
-    final params = <String, dynamic>{'page': _currentPage, 'limit': 10};
-    if (_nameController.text.trim().isNotEmpty) {
-      params['search'] = _nameController.text
-          .trim(); // atau sesuaikan key API (misal: 'name')
-    }
-    if (_dateController.text.isNotEmpty) {
-      params['date'] = _dateController.text;
-    }
-    if (_rtController.text.trim().isNotEmpty) {
-      params['rt'] = _rtController.text.trim();
-    }
-    if (_rwController.text.trim().isNotEmpty) {
-      params['rw'] = _rwController.text.trim();
-    }
-    return params;
-  }
-
-  void _onSearchChanged(String query) {
-    if (_debounce?.isActive ?? false) _debounce!.cancel();
-    _debounce = Timer(const Duration(milliseconds: 500), () {
-      setState(() {
-        _searchQuery = query;
-      });
-      _fetchHistory(
-        refresh: true,
-      ); // Panggil ulang data dari awal setiap kali search
-    });
   }
 
   Color _getStatusColor(String status) {
@@ -230,7 +253,7 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
             padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
-                // BARIS 1: Cari Nama & Tombol Filter
+                // BARIS 1: Cari Nama KK & Tombol Filter
                 Row(
                   children: [
                     Expanded(
@@ -240,11 +263,12 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
                           controller: _nameController,
                           onChanged: _onNameChanged,
                           decoration: const InputDecoration(
-                            hintText: 'Cari nama',
+                            hintText: 'Cari nama KK...',
                             border: OutlineInputBorder(),
                             contentPadding: EdgeInsets.symmetric(
                               horizontal: 12,
                             ),
+                            prefixIcon: Icon(Icons.search, size: 20),
                           ),
                         ),
                       ),
@@ -252,7 +276,7 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
                     const SizedBox(width: 8),
                     SizedBox(
                       height: 48,
-                      child: OutlinedButton(
+                      child: OutlinedButton.icon(
                         onPressed: () {
                           setState(() {
                             _showFilters = !_showFilters;
@@ -262,20 +286,71 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          side: const BorderSide(color: Colors.black87),
+                          side: BorderSide(
+                            color: _showFilters
+                                ? Colors.blue
+                                : Colors.grey.shade600,
+                          ),
                         ),
-                        child: const Text(
+                        icon: Icon(
+                          Icons.filter_list,
+                          size: 18,
+                          color: _showFilters ? Colors.blue : Colors.black87,
+                        ),
+                        label: Text(
                           'Filter',
-                          style: TextStyle(color: Colors.black87, fontSize: 16),
+                          style: TextStyle(
+                            color: _showFilters ? Colors.blue : Colors.black87,
+                            fontSize: 14,
+                          ),
                         ),
                       ),
                     ),
                   ],
                 ),
 
-                // BARIS 2: Filter Lanjutan (Tanggal, RT, RW, Cari)
+                // BARIS 2: Filter Lanjutan (Desa, Tanggal, RT, RW)
                 if (_showFilters) ...[
                   const SizedBox(height: 12),
+
+                  // Dropdown Desa
+                  SizedBox(
+                    height: 48,
+                    child: DropdownButtonFormField<String>(
+                      decoration: InputDecoration(
+                        hintText: _isLoadingVillages
+                            ? 'Memuat desa...'
+                            : 'Semua Desa',
+                        border: const OutlineInputBorder(),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                        ),
+                      ),
+                      value: _selectedVillageId,
+                      items: [
+                        const DropdownMenuItem<String>(
+                          value: null,
+                          child: Text(
+                            'Semua Desa',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        ),
+                        ..._villages.map<DropdownMenuItem<String>>((v) {
+                          return DropdownMenuItem<String>(
+                            value: v['id'].toString(),
+                            child: Text(v['name'].toString()),
+                          );
+                        }),
+                      ],
+                      onChanged: (val) {
+                        setState(() => _selectedVillageId = val);
+                        _fetchHistory(refresh: true); // Eksekusi filter
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Tanggal, RT, RW, dan Tombol Cari
                   Row(
                     children: [
                       // Field Tanggal
@@ -301,6 +376,7 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
                                           _dateController.clear();
                                           _selectedDate = null;
                                         });
+                                        _fetchHistory(refresh: true);
                                       },
                                     )
                                   : null,
@@ -347,7 +423,7 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      // Tombol Cari (Border Biru)
+                      // Tombol Cari
                       Expanded(
                         flex: 3,
                         child: SizedBox(
@@ -362,19 +438,20 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
                               ); // Eksekusi pencarian
                             },
                             style: OutlinedButton.styleFrom(
+                              backgroundColor: Colors.blue[50],
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               side: const BorderSide(
                                 color: Colors.blue,
-                                width: 2,
+                                width: 1.5,
                               ),
                             ),
                             child: const Text(
-                              'Cari',
+                              'Terapkan',
                               style: TextStyle(
                                 color: Colors.blue,
-                                fontSize: 16,
+                                fontSize: 13,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -400,11 +477,11 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
                       physics: const AlwaysScrollableScrollPhysics(),
                       children: [
                         SizedBox(
-                          height: MediaQuery.of(context).size.height * 0.4,
+                          height: MediaQuery.of(context).size.height * 0.3,
                         ),
                         const Center(
                           child: Text(
-                            'Belum ada riwayat laporan.',
+                            'Tidak ada laporan yang sesuai filter.',
                             style: TextStyle(color: Colors.grey, fontSize: 16),
                           ),
                         ),
@@ -416,7 +493,6 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
                       physics: const AlwaysScrollableScrollPhysics(),
                       itemCount: _reports.length + (_hasMoreData ? 1 : 0),
                       itemBuilder: (context, index) {
-                        // Jika mencapai indeks terakhir dan masih ada data, tampilkan loading kecil
                         if (index == _reports.length) {
                           return const Padding(
                             padding: EdgeInsets.all(16.0),
@@ -428,19 +504,15 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
                         final headName =
                             report['family_head_name'] ?? 'Tidak Diketahui';
 
-                        // Mengambil nama desa dari relasi object Village
                         final villageName = report['village'] != null
                             ? report['village']['name']
                             : '-';
                         final rtRw =
                             'RT ${report['rt']}/RW ${report['rw']} - Desa $villageName';
-
                         final isPositive = report['larvae_status'] == 1;
                         final valStatus =
                             report['validation_status'] ?? 'pending';
-                        // final rejectionReason = report['rejection_reason'];
 
-                        // Parsing Format Tanggal API (ISO 8601)
                         String dateStr = '-';
                         if (report['inspected_at'] != null) {
                           try {
@@ -552,7 +624,8 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
                                       ),
                                     ],
                                   ),
-                                  // TOMBOL EDIT LAPORAN
+
+                                  // TOMBOL EDIT LAPORAN JIKA BELUM DI "ACCEPT"
                                   if (valStatus.toLowerCase() != 'accept') ...[
                                     const SizedBox(height: 12),
                                     const Divider(height: 1),
@@ -571,7 +644,7 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
                                               ),
                                             );
 
-                                            // Jika edit berhasil (mengembalikan 'true'), refresh list riwayatnya
+                                            // Jika edit berhasil dan kembali ke halaman ini, refresh list-nya
                                             if (result == true) {
                                               _fetchHistory(refresh: true);
                                             }
