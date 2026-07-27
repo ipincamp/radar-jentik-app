@@ -337,9 +337,13 @@ class _EditFormPageState extends State<EditFormPage> {
       }
     } on DioException catch (e) {
       String errMsg = 'Gagal menyimpan perubahan laporan';
-      // Menangkap pesan error spesifik dari backend (jika ada)
-      if (e.response?.data != null && e.response?.data['message'] != null) {
-        errMsg = e.response!.data['message'].toString();
+      // Pastikan datanya adalah Map (JSON) sebelum memanggil ['message']
+      if (e.response?.data != null &&
+          e.response?.data is Map &&
+          e.response?.data['message'] != null) {
+        errMsg = e.response?.data['message'] ?? errMsg;
+      } else if (e.response?.statusCode == 404) {
+        errMsg = 'Sistem backend belum mendukung edit data (404 Not Found)';
       } else if (e.message != null) {
         errMsg = e.message!;
       }
