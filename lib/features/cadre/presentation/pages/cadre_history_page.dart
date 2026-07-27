@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import '../../../../core/network/api_client.dart';
 import 'cadre_report_detail_page.dart';
+import 'edit_form_page.dart';
 
 class CadreHistoryPage extends StatefulWidget {
   const CadreHistoryPage({super.key});
@@ -559,20 +560,21 @@ class _CadreHistoryPageState extends State<CadreHistoryPage> {
                                       mainAxisAlignment: MainAxisAlignment.end,
                                       children: [
                                         TextButton.icon(
-                                          onPressed: () {
-                                            // TODO: Navigasikan ke halaman form untuk Mode Edit
-                                            // Saat ini EntryFormPage belum mendukung passing data edit,
-                                            // jadi tampilkan SnackBar dulu buat sementara.
-                                            ScaffoldMessenger.of(
+                                          onPressed: () async {
+                                            // Navigasi ke halaman EditFormPage dengan membawa data 'report'
+                                            final result = await Navigator.push(
                                               context,
-                                            ).showSnackBar(
-                                              const SnackBar(
-                                                content: Text(
-                                                  'Fitur edit form akan segera tersedia.',
+                                              MaterialPageRoute(
+                                                builder: (_) => EditFormPage(
+                                                  reportData: report,
                                                 ),
-                                                backgroundColor: Colors.blue,
                                               ),
                                             );
+
+                                            // Jika edit berhasil (mengembalikan 'true'), refresh list riwayatnya
+                                            if (result == true) {
+                                              _fetchHistory(refresh: true);
+                                            }
                                           },
                                           icon: const Icon(
                                             Icons.edit_rounded,
