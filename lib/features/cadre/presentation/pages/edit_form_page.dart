@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:image_picker/image_picker.dart';
+import '../../../../core/network/api_client.dart';
 
 // Class penampung wadah dibuat private (pakai underscore)
 // agar tidak bentrok dengan class di entry_form_page.dart
@@ -64,11 +65,16 @@ class _EditFormPageState extends State<EditFormPage> {
   final ImagePicker _picker = ImagePicker();
   XFile? _imageFile;
 
+  // Tambahkan variabel ini di bawah deklarasi variabel lainnya
+  final _apiClient = ApiClient();
+
   @override
   void initState() {
     super.initState();
+    // 1. Isi form dengan data laporan bawaan (termasuk UUID desa)
+    _populateInitialData();
+    // 2. Fetch API Desa yang asli & validasi UUID-nya
     _fetchMasterData();
-    _populateInitialData(); // Mengisi form dengan data bawaan
   }
 
   @override
@@ -103,6 +109,47 @@ class _EditFormPageState extends State<EditFormPage> {
       } catch (_) {}
     }
     _dateTimeController.text = _formatDateTime(_selectedDateTime);
+
+    // ==============================================================
+    // Memuat daftar wadah yang sudah ada sebelumnya
+    // ==============================================================
+    final details =
+        widget.reportData['container_details'] as List<dynamic>? ?? [];
+
+    for (var detail in details) {
+      final containerTypeId = detail['container_type_id']?.toString() ?? '';
+
+      // Ambil nama wadah bawaan dari relasi container_type (Preload database)
+      String baseName = 'Wadah Standar';
+      if (detail['container_type'] != null) {
+        baseName = detail['container_type']['name']?.toString() ?? baseName;
+      }
+
+      // Cek apakah ini "Wadah Lainnya" yang butuh input teks manual
+      final isCustom = baseName.toLowerCase().contains('lain');
+      final customName = detail['custom_name']?.toString() ?? '';
+
+      // Inisiasi objek wadah untuk ditampilkan di UI
+      final existingContainer = _AddedContainer(
+        id: containerTypeId,
+        baseName: baseName,
+        isCustom: isCustom,
+      );
+
+      // Jika custom, isi controller teksnya
+      if (isCustom) {
+        existingContainer.customNameCtrl.text = customName;
+      }
+
+      // Isi angka jumlah diperiksa dan positif
+      existingContainer.inspectedCount =
+          int.tryParse(detail['inspected_count']?.toString() ?? '0') ?? 0;
+      existingContainer.positiveCount =
+          int.tryParse(detail['positive_count']?.toString() ?? '0') ?? 0;
+
+      // Masukkan ke dalam list state form
+      _addedContainers.add(existingContainer);
+    }
   }
 
   String _formatDateTime(DateTime dt) {
@@ -138,25 +185,50 @@ class _EditFormPageState extends State<EditFormPage> {
     }
   }
 
-  // DUMMY FUNGSI: Mengambil master data (Urusan backend nanti)
   Future<void> _fetchMasterData() async {
-    setState(() {
-      _villages = [
-        {'id': '1', 'name': 'Desa A'},
-        {'id': '2', 'name': 'Desa B'},
-      ];
-      if (!_villages.any((v) => v['id'] == _selectedVillageId)) {
-        _selectedVillageId = null;
+    try {
+      // Ambil Data Desa Asli dari API
+      final responseVillages = await _apiClient.dio.get('/villages');
+      if (responseVillages.statusCode == 200) {
+        _villages = responseVillages.data['data'] ?? [];
       }
-      _isLoadingVillages = false;
 
-      _containerTypes = [
-        {'id': '1', 'name': 'Bak Mandi'},
-        {'id': '2', 'name': 'Ember'},
-        {'id': '3', 'name': 'Wadah Lainnya'},
-      ];
-      _isLoadingContainers = false;
-    });
+      // Ambil Data Wadah Asli dari API
+      final responseContainers = await _apiClient.dio.get('/container-types');
+      if (responseContainers.statusCode == 200) {
+        _containerTypes = responseContainers.data['data'] ?? [];
+      }
+
+      if (mounted) {
+        setState(() {
+          // VALIDASI AMAN: Pastikan _selectedVillageId (UUID laporan) ada di daftar _villages asli
+          if (_selectedVillageId != null) {
+            bool exists = _villages.any(
+              (v) => v['id'].toString() == _selectedVillageId,
+            );
+            if (!exists) {
+              _selectedVillageId =
+                  null; // Reset jika tidak ketemu agar Dropdown tidak crash
+            }
+          }
+
+          _isLoadingVillages = false;
+          _isLoadingContainers = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingVillages = false;
+          _isLoadingContainers = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Gagal memuat data master desa atau wadah'),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _takePicture() async {
