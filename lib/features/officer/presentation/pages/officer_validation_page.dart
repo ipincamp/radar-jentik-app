@@ -17,12 +17,11 @@ class _OfficerValidationPageState extends State<OfficerValidationPage> {
   bool _isLoading = true;
   bool _isFetchingMore = false;
   List<dynamic> _pendingReports = [];
-
   int _currentPage = 1;
   bool _hasMoreData = true;
 
   // STATE UNTUK BULK VALIDATION
-  Set<dynamic> _selectedReportIds = {};
+  final Set<String> _selectedReportIds = {};
   bool _isBulkProcessing = false;
 
   @override
@@ -68,23 +67,25 @@ class _OfficerValidationPageState extends State<OfficerValidationPage> {
         final data = response.data['data'] as List<dynamic>? ?? [];
         final meta = response.data['meta'];
 
-        setState(() {
-          _pendingReports.addAll(data);
-          _isLoading = false;
-          if (meta != null) {
-            _hasMoreData = _currentPage < (meta['total_pages'] ?? 1);
-          } else {
-            _hasMoreData = false;
-          }
-        });
+        if (mounted) {
+          setState(() {
+            _pendingReports.addAll(data);
+            _isLoading = false;
+            if (meta != null) {
+              _hasMoreData = _currentPage < (meta['total_pages'] ?? 1);
+            } else {
+              _hasMoreData = false;
+            }
+          });
+        }
       }
     } on DioException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(e.message ?? 'Gagal mengambil data')),
         );
+        setState(() => _isLoading = false);
       }
-      setState(() => _isLoading = false);
     }
   }
 
@@ -102,26 +103,28 @@ class _OfficerValidationPageState extends State<OfficerValidationPage> {
         final data = response.data['data'] as List<dynamic>? ?? [];
         final meta = response.data['meta'];
 
-        setState(() {
-          _pendingReports.addAll(data);
-          if (meta != null) {
-            _hasMoreData = _currentPage < (meta['total_pages'] ?? 1);
-          } else {
-            _hasMoreData = false;
-          }
-        });
+        if (mounted) {
+          setState(() {
+            _pendingReports.addAll(data);
+            if (meta != null) {
+              _hasMoreData = _currentPage < (meta['total_pages'] ?? 1);
+            } else {
+              _hasMoreData = false;
+            }
+          });
+        }
       }
     } catch (e) {
       _currentPage--;
     } finally {
-      setState(() => _isFetchingMore = false);
+      if (mounted) setState(() => _isFetchingMore = false);
     }
   }
 
   // ==========================================
-  // LOGIKA BULK VALIDATION (PILIH BANYAK)
+  // LOGIKA SELEKSI (CHECKBOX)
   // ==========================================
-  void _toggleSelection(dynamic id) {
+  void _toggleSelection(String id) {
     setState(() {
       if (_selectedReportIds.contains(id)) {
         _selectedReportIds.remove(id);
@@ -134,15 +137,21 @@ class _OfficerValidationPageState extends State<OfficerValidationPage> {
   void _toggleSelectAll() {
     setState(() {
       if (_selectedReportIds.length == _pendingReports.length) {
-        // Jika semua yang dilist sudah terpilih, maka batalkan semua
         _selectedReportIds.clear();
       } else {
-        // Pilih semua laporan yang ada di memori saat ini
-        _selectedReportIds = _pendingReports.map((r) => r['id']).toSet();
+        _selectedReportIds.clear();
+        for (var report in _pendingReports) {
+          if (report['id'] != null) {
+            _selectedReportIds.add(report['id'].toString());
+          }
+        }
       }
     });
   }
 
+  // ==========================================
+  // PANGGIL API BULK VALIDATE REAL
+  // ==========================================
   Future<void> _submitBulkValidation(
     String status, {
     String? rejectionReason,
@@ -150,37 +159,54 @@ class _OfficerValidationPageState extends State<OfficerValidationPage> {
     setState(() => _isBulkProcessing = true);
 
     try {
-      // TODO: BACKEND NANTI
-      // Endpoint yang ideal: PUT /reports/bulk-validate
-      // Payload: { "report_ids": [1, 2, 3], "status": "accept" / "reject", "rejection_reason": "..." }
+      // Susun Payload sesuai BulkValidateRequest di Go Handler
+      final Map<String, dynamic> payload = {
+        "report_ids": _selectedReportIds.toList(),
+        "status": status,
+      };
 
-      /* CONTOH PANGGILAN API NYATA:
-      await _apiClient.dio.put('/reports/bulk-validate', data: {
-        'report_ids': _selectedReportIds.toList(),
-        'status': status,
-        if (status == 'reject') 'rejection_reason': rejectionReason,
-      });
-      */
+      if (status == 'reject' &&
+          rejectionReason != null &&
+          rejectionReason.isNotEmpty) {
+        payload['rejection_reason'] = rejectionReason;
+      }
 
-      // Simulasi delay request
-      await Future.delayed(const Duration(seconds: 1));
+      // Tembak Endpoint Backend
+      final response = await _apiClient.dio.put(
+        '/reports/bulk-validate',
+        data: payload,
+      );
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '${_selectedReportIds.length} laporan berhasil divalidasi',
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (mounted) {
+          final backendMsg =
+              response.data['message'] ?? 'Validasi massal berhasil';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(backendMsg),
+              backgroundColor: status == 'accept' ? Colors.green : Colors.red,
             ),
-            backgroundColor: status == 'accept' ? Colors.green : Colors.red,
-          ),
+          );
+          _fetchPendingReports(
+            refresh: true,
+          ); // Refresh otomatis setelah sukses
+        }
+      }
+    } on DioException catch (e) {
+      if (mounted) {
+        String errMsg = e.message ?? 'Gagal melakukan validasi massal';
+        if (e.response?.data != null && e.response?.data['message'] != null) {
+          errMsg = e.response?.data['message'].toString() ?? errMsg;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errMsg), backgroundColor: Colors.red),
         );
-        _fetchPendingReports(refresh: true); // Refresh daftar setelah berhasil
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Gagal melakukan validasi massal'),
+          SnackBar(
+            content: Text('Terjadi kesalahan: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -191,7 +217,7 @@ class _OfficerValidationPageState extends State<OfficerValidationPage> {
   }
 
   // ==========================================
-  // BOTTOM SHEET KONFIRMASI BULK REJECT
+  // BOTTOM SHEET BULK REJECT
   // ==========================================
   void _showBulkRejectSheet() {
     final TextEditingController reasonController = TextEditingController();
@@ -223,7 +249,7 @@ class _OfficerValidationPageState extends State<OfficerValidationPage> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Silakan masukkan alasan penolakan untuk laporan-laporan ini:',
+                'Masukkan alasan penolakan untuk laporan yang dipilih:',
               ),
               const SizedBox(height: 12),
               TextField(
@@ -231,7 +257,7 @@ class _OfficerValidationPageState extends State<OfficerValidationPage> {
                 maxLines: 3,
                 decoration: const InputDecoration(
                   border: OutlineInputBorder(),
-                  hintText: 'Contoh: Foto kurang jelas, data tidak valid...',
+                  hintText: 'Contoh: Foto tidak sesuai, alamat salah...',
                 ),
               ),
               const SizedBox(height: 24),
@@ -289,7 +315,7 @@ class _OfficerValidationPageState extends State<OfficerValidationPage> {
   }
 
   // ==========================================
-  // BOTTOM SHEET KONFIRMASI BULK ACCEPT
+  // BOTTOM SHEET BULK ACCEPT
   // ==========================================
   void _showBulkAcceptSheet() {
     showModalBottomSheet(
@@ -310,7 +336,7 @@ class _OfficerValidationPageState extends State<OfficerValidationPage> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Apakah Anda yakin ingin menerima ${_selectedReportIds.length} laporan terpilih ini secara bersamaan?',
+              'Apakah Anda yakin ingin menerima ${_selectedReportIds.length} laporan ini secara bersamaan?',
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 14),
             ),
@@ -356,7 +382,6 @@ class _OfficerValidationPageState extends State<OfficerValidationPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Mengecek apakah semua item yang di-load sudah terpilih
     bool isAllSelected =
         _pendingReports.isNotEmpty &&
         _selectedReportIds.length == _pendingReports.length;
@@ -370,7 +395,6 @@ class _OfficerValidationPageState extends State<OfficerValidationPage> {
         backgroundColor: const Color(0xFF143B59),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          // Tombol Pilih Semua (Muncul kalau ada data)
           if (_pendingReports.isNotEmpty)
             Row(
               children: [
@@ -383,9 +407,9 @@ class _OfficerValidationPageState extends State<OfficerValidationPage> {
                   onChanged: (val) => _toggleSelectAll(),
                   fillColor: WidgetStateProperty.resolveWith((states) {
                     if (states.contains(WidgetState.selected)) {
-                      return Colors.orange; // Warna saat dicentang
+                      return Colors.orange;
                     }
-                    return Colors.white; // Warna kotak saat kosong
+                    return Colors.white;
                   }),
                   checkColor: Colors.white,
                 ),
@@ -426,7 +450,7 @@ class _OfficerValidationPageState extends State<OfficerValidationPage> {
                       left: 12,
                       right: 12,
                       bottom: 90,
-                    ), // Bottom padding agar tidak tertutup Action Bar
+                    ),
                     physics: const AlwaysScrollableScrollPhysics(),
                     itemCount: _pendingReports.length + (_hasMoreData ? 1 : 0),
                     itemBuilder: (context, index) {
@@ -440,7 +464,7 @@ class _OfficerValidationPageState extends State<OfficerValidationPage> {
                       }
 
                       final report = _pendingReports[index];
-                      final reportId = report['id'];
+                      final String reportId = report['id'].toString();
                       final isSelected = _selectedReportIds.contains(reportId);
 
                       final headName =
@@ -476,7 +500,6 @@ class _OfficerValidationPageState extends State<OfficerValidationPage> {
                         ),
                         child: InkWell(
                           borderRadius: BorderRadius.circular(12),
-                          // Tap biasa -> Buka Detail
                           onTap: () async {
                             final result = await Navigator.push(
                               context,
@@ -491,20 +514,17 @@ class _OfficerValidationPageState extends State<OfficerValidationPage> {
                               _fetchPendingReports(refresh: true);
                             }
                           },
-                          // Long Press -> Pilih (Select)
                           onLongPress: () => _toggleSelection(reportId),
                           child: Padding(
                             padding: const EdgeInsets.all(8.0),
                             child: Row(
                               children: [
-                                // Checkbox di sebelah kiri
                                 Checkbox(
                                   value: isSelected,
                                   onChanged: (val) =>
                                       _toggleSelection(reportId),
                                   activeColor: Colors.orange,
                                 ),
-                                // Konten Laporan
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
@@ -552,7 +572,7 @@ class _OfficerValidationPageState extends State<OfficerValidationPage> {
           ),
 
           // ==========================================
-          // BOTTOM BULK ACTION BAR
+          // BOTTOM ACTION BAR (MUNCUL JIKA ADA TERPILIH)
           // ==========================================
           if (_selectedReportIds.isNotEmpty)
             Align(
@@ -578,7 +598,6 @@ class _OfficerValidationPageState extends State<OfficerValidationPage> {
                 child: SafeArea(
                   child: Row(
                     children: [
-                      // Indikator Jumlah Terpilih
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
@@ -595,8 +614,6 @@ class _OfficerValidationPageState extends State<OfficerValidationPage> {
                         ),
                       ),
                       const SizedBox(width: 12),
-
-                      // Tombol Tolak
                       Expanded(
                         child: OutlinedButton(
                           style: OutlinedButton.styleFrom(
@@ -611,8 +628,6 @@ class _OfficerValidationPageState extends State<OfficerValidationPage> {
                         ),
                       ),
                       const SizedBox(width: 8),
-
-                      // Tombol Terima
                       Expanded(
                         child: ElevatedButton(
                           style: ElevatedButton.styleFrom(
