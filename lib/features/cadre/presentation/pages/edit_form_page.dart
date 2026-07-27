@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:image_picker/image_picker.dart';
+import 'package:dio/dio.dart';
+
 import '../../../../core/network/api_client.dart';
 
 // Class penampung wadah dibuat private (pakai underscore)
@@ -64,6 +66,7 @@ class _EditFormPageState extends State<EditFormPage> {
 
   final ImagePicker _picker = ImagePicker();
   XFile? _imageFile;
+  String? _existingPhotoUrl;
 
   // Tambahkan variabel ini di bawah deklarasi variabel lainnya
   final _apiClient = ApiClient();
@@ -98,6 +101,7 @@ class _EditFormPageState extends State<EditFormPage> {
     _rwController.text = widget.reportData['rw']?.toString() ?? '';
     _latController.text = widget.reportData['latitude']?.toString() ?? '';
     _lngController.text = widget.reportData['longitude']?.toString() ?? '';
+    _existingPhotoUrl = widget.reportData['photo_url']?.toString();
 
     _selectedVillageId = widget.reportData['village_id']?.toString();
 
@@ -246,6 +250,7 @@ class _EditFormPageState extends State<EditFormPage> {
   }
 
   Future<void> _submitEditReport() async {
+    // 1. Validasi Input Form Dasar
     if (!_formKey.currentState!.validate()) return;
     if (_selectedVillageId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -256,22 +261,105 @@ class _EditFormPageState extends State<EditFormPage> {
 
     setState(() => _isLoading = true);
 
-    // TODO: URUSAN BACKEND NANTI
-    await Future.delayed(const Duration(seconds: 1)); // Simulasi loading API
+    try {
+      // 2. Tentukan Foto Final yang akan dikirim
+      String finalPhotoUrl = _existingPhotoUrl ?? '';
 
-    setState(() => _isLoading = false);
+      // 3. Jika user menjepret foto baru, upload dulu foto barunya
+      if (_imageFile != null) {
+        String fileName = _imageFile!.path.split('/').last;
+        FormData formData = FormData.fromMap({
+          "photo": await MultipartFile.fromFile(
+            _imageFile!.path,
+            filename: fileName,
+          ),
+        });
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Perubahan Laporan Berhasil Disimpan!'),
-          backgroundColor: Colors.green,
-        ),
+        final uploadRes = await _apiClient.dio.post('/uploads', data: formData);
+
+        if (uploadRes.statusCode == 200 || uploadRes.statusCode == 201) {
+          finalPhotoUrl = uploadRes.data['data']['photo_url'];
+        } else {
+          throw Exception("Gagal mengunggah foto baru ke server.");
+        }
+      }
+
+      // 4. Kumpulkan Data Wadah (Abaikan jika jumlah & positif = 0)
+      List<Map<String, dynamic>> containerList = [];
+      for (var c in _addedContainers) {
+        if (c.inspectedCount == 0 && c.positiveCount == 0) continue;
+
+        final itemData = {
+          "container_type_id": c.id,
+          "inspected_count": c.inspectedCount,
+          "positive_count": c.positiveCount,
+        };
+
+        if (c.isCustom) {
+          itemData["custom_name"] = c.customNameCtrl.text.trim();
+        }
+        containerList.add(itemData);
+      }
+
+      // 5. Susun Payload Pembaruan
+      final payload = {
+        "village_id": _selectedVillageId,
+        "rt": _rtController.text.trim(),
+        "rw": _rwController.text.trim(),
+        "family_head_name": _headNameController.text.trim(),
+        "latitude": double.tryParse(_latController.text) ?? 0.0,
+        "longitude": double.tryParse(_lngController.text) ?? 0.0,
+        "inspected_at": _selectedDateTime.toIso8601String(),
+        "photo_url": finalPhotoUrl,
+        "containers": containerList,
+      };
+
+      // 6. Kirim data pembaruan ke server (Gunakan ID laporan lama)
+      final reportId = widget.reportData['id'];
+      final response = await _apiClient.dio.put(
+        '/reports/$reportId',
+        data: payload,
       );
-      Navigator.pop(
-        context,
-        true,
-      ); // Kembali ke halaman sebelumnya dan bawa status true (refresh)
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Perubahan Laporan Berhasil Disimpan!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pop(
+            context,
+            true,
+          ); // Kembali & beri sinyal refresh ke halaman riwayat
+        }
+      }
+    } on DioException catch (e) {
+      String errMsg = 'Gagal menyimpan perubahan laporan';
+      // Menangkap pesan error spesifik dari backend (jika ada)
+      if (e.response?.data != null && e.response?.data['message'] != null) {
+        errMsg = e.response!.data['message'].toString();
+      } else if (e.message != null) {
+        errMsg = e.message!;
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errMsg), backgroundColor: Colors.red),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Terjadi kesalahan: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -566,7 +654,9 @@ class _EditFormPageState extends State<EditFormPage> {
                       border: Border.all(color: Colors.blue, width: 2),
                       borderRadius: BorderRadius.circular(12),
                     ),
+                    // LOGIKA PENAMPILAN FOTO
                     child: _imageFile != null
+                        // 1. Jika ada jepretan foto BARU, tampilkan foto baru
                         ? ClipRRect(
                             borderRadius: BorderRadius.circular(10),
                             child: kIsWeb
@@ -579,6 +669,31 @@ class _EditFormPageState extends State<EditFormPage> {
                                     fit: BoxFit.cover,
                                   ),
                           )
+                        // 2. Jika tidak ada foto baru, cek apakah ada foto LAMA dari database
+                        : (_existingPhotoUrl != null &&
+                              _existingPhotoUrl!.isNotEmpty)
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: Image.network(
+                              _existingPhotoUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (ctx, err, stack) => const Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.broken_image,
+                                    color: Colors.grey,
+                                    size: 40,
+                                  ),
+                                  Text(
+                                    'Gagal memuat foto lama',
+                                    style: TextStyle(color: Colors.grey),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        // 3. Jika tidak ada foto baru dan tidak ada foto lama, tampilkan placeholder
                         : const Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
